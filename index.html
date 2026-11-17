@@ -23,7 +23,7 @@
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 
-  <link rel="stylesheet" href="styles.css?v=3" />
+  <link rel="stylesheet" href="styles.css?v=3.1" />
 </head>
 <body data-mode="basic">
   <div class="app-shell">
@@ -154,10 +154,10 @@
             </div>
           </div>
 
-          <!-- Raw Speed Readout Row (Expert Only) -->
-          <div class="raw-speed-row expert-only">
+          <!-- Raw Speed & Unfiltered Haversine Δd/Δt Readout Row (Always Visible) -->
+          <div class="raw-speed-row">
             <span>Doppler: <strong id="rawGpsSpeedMs">null</strong> (<strong id="rawSpeedKmh">0.0 km/h</strong>)</span>
-            <span>Haversine Δd/Δt: <strong id="rawHaversineKmh">0.0 km/h</strong></span>
+            <span>Haversine Δd/Δt: <strong id="rawHaversineKmh">0.0 km/h (Δd=0.0m)</strong></span>
           </div>
 
           <!-- Speed Progress Bar -->
@@ -543,7 +543,7 @@
     </main>
 
     <footer class="app-footer">
-      <span>BUBIAI.GPS TELEMETRIJA PWA v3.0 // BAZINIS &amp; EKSPERTO REŽIMAI</span>
+      <span>BUBIAI.GPS TELEMETRIJA PWA v3.1 // KALMAN FILTER &amp; SENSOR FUSION</span>
       <span>gps.bubiai.eu</span>
     </footer>
   </div>
@@ -566,6 +566,6 @@
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=3.1"></script>
 </body>
 </html>

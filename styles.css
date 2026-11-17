@@ -215,8 +215,13 @@ html, body {
 }
 
 .signal-dot.medium {
-  background: var(--accent-amber);
-  box-shadow: 0 0 10px var(--accent-amber);
+  background: #eab308;
+  box-shadow: 0 0 10px #eab308;
+}
+
+.signal-dot.orange {
+  background: #f97316;
+  box-shadow: 0 0 10px #f97316;
 }
 
 .signal-bars {

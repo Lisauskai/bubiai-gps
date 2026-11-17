@@ -1,9 +1,9 @@
-const CACHE_NAME = 'bubiai-gps-v3';
+const CACHE_NAME = 'bubiai-gps-v3.1';
 const ASSETS = [
   '/',
   '/index.html',
-  '/styles.css?v=3',
-  '/app.js?v=3',
+  '/styles.css?v=3.1',
+  '/app.js?v=3.1',
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png',
