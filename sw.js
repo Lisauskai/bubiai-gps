@@ -1,11 +1,13 @@
-const CACHE_NAME = 'bubiai-gps-v2';
+const CACHE_NAME = 'bubiai-gps-v3';
 const ASSETS = [
-  './',
-  './index.html',
-  './styles.css?v=2',
-  './app.js?v=2',
-  './manifest.json?v=2',
-  './icon.svg'
+  '/',
+  '/index.html',
+  '/styles.css?v=3',
+  '/app.js?v=3',
+  '/manifest.json',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/icon.svg'
 ];
 
 self.addEventListener('install', event => {
@@ -26,7 +28,7 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
 
-  // Network-first strategy so updates are always loaded immediately when online
+  // Network-First strategy for HTML, CSS, JS, and Manifest so updates appear immediately
   event.respondWith(
     fetch(event.request)
       .then(networkResp => {
