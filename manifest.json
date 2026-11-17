@@ -1,0 +1,20 @@
+{
+  "name": "Bubiai GPS // Telemetrija ir Navigacija",
+  "short_name": "Bubiai GPS",
+  "description": "Aukšto tikslumo GPS telemetrijos, greičio, aukščio, G-jėgos ir maršruto fiksavimo PWA aplikacija.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "lang": "lt",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
