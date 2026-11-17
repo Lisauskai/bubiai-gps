@@ -217,12 +217,13 @@ html, body {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  background: rgba(0, 245, 212, 0.1);
-  border: 1px solid var(--accent-cyan);
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid var(--accent-amber);
   color: var(--text-primary);
-  padding: 8px 12px;
+  padding: 9px 12px;
   border-radius: var(--radius-sm);
   font-size: 0.82rem;
+  line-height: 1.35;
 }
 
 .alert-banner.hidden {
@@ -299,7 +300,7 @@ html, body {
 
 .ctrl-sim {
   background: var(--bg-card-elevated);
-  border-color: var(--border-highlight);
+  border: 1px solid var(--border-highlight);
   color: var(--text-secondary);
 }
 
@@ -333,6 +334,7 @@ html, body {
 .card-sensors { grid-column: span 6; }
 .card-map { grid-column: span 6; }
 .card-chart { grid-column: span 6; }
+.card-diag { grid-column: span 12; }
 
 .card-header {
   display: flex;
@@ -431,6 +433,24 @@ html, body {
 .unit-sub {
   font-size: 0.72rem;
   color: var(--text-secondary);
+}
+
+.raw-speed-row {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  background: var(--bg-card-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+}
+
+.raw-speed-row strong {
+  color: var(--accent-cyan);
 }
 
 .speed-bar-track {
@@ -829,7 +849,7 @@ html, body {
   color: var(--text-primary);
 }
 
-/* 5. MINI-MAP */
+/* 5. MINI-MAP (WITH OLED DARK FILTER OPTION ON OFFICIAL OSM TILES) */
 .map-controls-inline {
   display: flex;
   gap: 6px;
@@ -862,10 +882,16 @@ html, body {
   background: #060a0f;
 }
 
+/* Dark Mode Filter on Official OpenStreetMap Tiles - No API Key Needed */
+.map-container-wrap.map-dark-active .leaflet-tile-pane {
+  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+}
+
 .leaflet-map {
   width: 100%;
   height: 100%;
   z-index: 1;
+  background: #060a0f;
 }
 
 .map-overlay-stats {
@@ -982,6 +1008,47 @@ html, body {
   background: rgba(16, 185, 129, 0.22);
 }
 
+/* 7. DIAGNOSTIC LOG LIST */
+.diag-list {
+  background: var(--bg-card-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  max-height: 165px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 0.69rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.diag-empty {
+  color: var(--text-muted);
+}
+
+.diag-item {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+  border-left: 3px solid var(--accent-cyan);
+  color: var(--text-secondary);
+}
+
+.diag-item.coarse {
+  border-left-color: var(--accent-amber);
+  color: #fcd34d;
+}
+
+.diag-item.timeout {
+  border-left-color: var(--accent-red);
+  color: #fca5a5;
+}
+
 .app-footer {
   display: flex;
   justify-content: space-between;
@@ -1000,7 +1067,8 @@ html, body {
   .card-altitude,
   .card-sensors,
   .card-map,
-  .card-chart {
+  .card-chart,
+  .card-diag {
     grid-column: span 12;
   }
 }

@@ -1,15 +1,20 @@
 /**
- * BUBIAI GPS // Telemetrijos ir navigacijos PWA
+ * BUBIAI GPS // Telemetrijos ir navigacijos PWA v2.0
  * https://gps.bubiai.eu
  */
 
 (() => {
   'use strict';
 
-  const STORAGE_KEY = 'bubiai_gps_session_v1';
+  const STORAGE_KEY = 'bubiai_gps_session_v2';
   const EARTH_RADIUS_M = 6371000;
   const MOVING_THRESHOLD_KMH = 1.5; // Judėjimo laiko ir vid. judėjimo greičio slenkstis
-  const MICRO_DRIFT_MIN_KMH = 1.0;  // Atstumo filtravimo slenkstis
+  const MAX_USABLE_ACCURACY_M = 150; // Skaičiuoti greitį ir atstumą visiems taškams, kurių accuracy <= 150m
+  const COARSE_LOCATION_THRESHOLD_M = 1000; // Apytikslės tinklo/IP vietos slenkstis (> 1000m)
+
+  // Tile Layer URLs
+  const OSM_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+  const CARTO_DARK_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 
   // Default coordinates: Bubiai, Šiaulių r.
   const DEFAULT_CENTER = [55.8569, 23.1364];
@@ -31,20 +36,25 @@
     // Speed metrics
     currentSpeedMs: 0,
     currentSpeedKmh: 0,
+    rawSpeedKmh: 0,
+    rawHaversineKmh: 0,
     maxSpeedKmh: 0,
-    speedWindowMs: [], // Moving average buffer for Haversine fallback
+    speedWindowMs: [],
 
     // Distance
     totalDistanceM: 0,
 
+    // Last fix for Haversine delta calculation
+    lastFix: null, // { lat, lon, timestamp, accuracy }
+
     // Altitude & Terrain
     currentAltitude: null,
-    referenceAltitude: null, // For threshold-filtered Gain/Loss
+    referenceAltitude: null,
     elevationGainM: 0,
     elevationLossM: 0,
     gradientPct: 0,
     verticalSpeedMmin: 0,
-    lastAltSample: null, // { alt, distM, timeMs }
+    lastAltSample: null,
 
     // Heading / Compass
     currentHeadingDeg: null,
@@ -71,8 +81,10 @@
     autoCenterMap: true,
     darkMapLayer: true,
 
+    // Diagnostic log counter & entries
+    diagCount: 0,
+
     // Recorded track points
-    // { lat, lon, alt, speedKmh, speedMs, acc, altAcc, heading, timestamp, distM }
     points: []
   };
 
@@ -102,6 +114,9 @@
     speedSourceBadge: document.getElementById('speedSourceBadge'),
     speedKmh: document.getElementById('speedKmh'),
     speedMs: document.getElementById('speedMs'),
+    rawSpeedKmh: document.getElementById('rawSpeedKmh'),
+    rawGpsSpeedMs: document.getElementById('rawGpsSpeedMs'),
+    rawHaversineKmh: document.getElementById('rawHaversineKmh'),
     speedBarFill: document.getElementById('speedBarFill'),
     maxSpeedKmh: document.getElementById('maxSpeedKmh'),
     avgMovingSpeedKmh: document.getElementById('avgMovingSpeedKmh'),
@@ -139,6 +154,7 @@
     accelZ: document.getElementById('accelZ'),
     pointCount: document.getElementById('pointCount'),
 
+    mapContainerWrap: document.getElementById('mapContainerWrap'),
     btnCenterMap: document.getElementById('btnCenterMap'),
     btnToggleMapTheme: document.getElementById('btnToggleMapTheme'),
     mapPointsBadge: document.getElementById('mapPointsBadge'),
@@ -147,7 +163,10 @@
     telemetryChart: document.getElementById('telemetryChart'),
     storageStatusText: document.getElementById('storageStatusText'),
     btnExportGpx: document.getElementById('btnExportGpx'),
-    btnExportJson: document.getElementById('btnExportJson')
+    btnExportJson: document.getElementById('btnExportJson'),
+
+    diagCountBadge: document.getElementById('diagCountBadge'),
+    diagLogList: document.getElementById('diagLogList')
   };
 
   // Leaflet Map Instances
@@ -225,6 +244,33 @@
     el.alertBanner.classList.remove('hidden');
   }
 
+  function hideAlert() {
+    el.alertBanner.classList.add('hidden');
+  }
+
+  /**
+   * Append entry to the live Diagnostic Log (records all points including coarse >1000m)
+   */
+  function addDiagLog(text, type = 'normal') {
+    if (!el.diagLogList) return;
+    const emptyEl = el.diagLogList.querySelector('.diag-empty');
+    if (emptyEl) emptyEl.remove();
+
+    state.diagCount += 1;
+    if (el.diagCountBadge) {
+      el.diagCountBadge.textContent = `Įrašai: ${state.diagCount}`;
+    }
+
+    const row = document.createElement('div');
+    row.className = `diag-item ${type}`;
+    row.textContent = text;
+    el.diagLogList.prepend(row);
+
+    while (el.diagLogList.children.length > 40) {
+      el.diagLogList.removeChild(el.diagLogList.lastChild);
+    }
+  }
+
   // =========================================================================
   // MAP INITIALIZATION (LEAFLET + OPENSTREETMAP)
   // =========================================================================
@@ -241,18 +287,25 @@
 
     L.control.zoom({ position: 'topright' }).addTo(map);
 
-    tileLayerDark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
-      subdomains: 'abcd',
-      maxZoom: 20
-    });
-
-    tileLayerLight = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
+    // Light / Standard Layer: Official OpenStreetMap URL
+    tileLayerLight = L.tileLayer(OSM_TILE_URL, {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       maxZoom: 19
     });
 
+    // Dark Layer: Official OpenStreetMap tiles rendered with OLED Dark CSS filter
+    // (Prevents CartoCDN "API KEY REQUIRED" watermark while keeping Carto config reference)
+    tileLayerDark = L.tileLayer(OSM_TILE_URL, {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> (Dark)',
+      subdomains: 'abcd',
+      maxZoom: 20
+    });
+    tileLayerDark.cartoReferenceUrl = CARTO_DARK_URL;
+
     tileLayerDark.addTo(map);
+    if (el.mapContainerWrap) {
+      el.mapContainerWrap.classList.add('map-dark-active');
+    }
 
     routePolyline = L.polyline([], {
       color: '#00f5d4',
@@ -295,7 +348,7 @@
 
     currentMarker.setLatLng(latLng);
     accuracyCircle.setLatLng(latLng);
-    accuracyCircle.setRadius(accuracyM || 5);
+    accuracyCircle.setRadius(Math.min(accuracyM || 10, 500));
 
     const pathCoords = state.points.map(p => [p.lat, p.lon]);
     routePolyline.setLatLngs(pathCoords);
@@ -423,126 +476,168 @@
   }
 
   // =========================================================================
-  // GPS POSITION PROCESSING
+  // GPS POSITION PROCESSING (WATCHPOSITION HANDLER)
   // =========================================================================
 
   function handlePosition(pos) {
     const coords = pos.coords;
-    const nowMs = pos.timestamp || Date.now();
+    const nowMs = Date.now(); // Use monotonic wall clock for reliable deltaTime
+    const gpsTimeMs = pos.timestamp || nowMs;
 
     const lat = coords.latitude;
     const lon = coords.longitude;
-    const accuracy = typeof coords.accuracy === 'number' ? coords.accuracy : 15;
+    const accuracy = typeof coords.accuracy === 'number' ? coords.accuracy : 9999;
     const alt = typeof coords.altitude === 'number' ? coords.altitude : null;
     const altAcc = typeof coords.altitudeAccuracy === 'number' ? coords.altitudeAccuracy : null;
+    const nativeSpeedMs = (typeof coords.speed === 'number' && !Number.isNaN(coords.speed) && coords.speed >= 0)
+      ? coords.speed
+      : null;
 
     state.currentLat = lat;
     state.currentLon = lon;
     state.horizAccuracyM = accuracy;
     state.vertAccuracyM = altAcc;
 
-    const prevPoint = state.points.length > 0 ? state.points[state.points.length - 1] : null;
+    // Calculate deltaDistance & deltaTime from previous fix
     let deltaDistM = 0;
     let deltaTimeSec = 0;
+    let haversineSpeedMs = 0;
 
-    if (prevPoint) {
-      deltaDistM = haversineDistanceM(prevPoint.lat, prevPoint.lon, lat, lon);
-      deltaTimeSec = Math.max(0.2, (nowMs - prevPoint.timestamp) / 1000);
+    if (state.lastFix) {
+      deltaDistM = haversineDistanceM(state.lastFix.lat, state.lastFix.lon, lat, lon);
+      deltaTimeSec = Math.max(0.25, (nowMs - state.lastFix.timestamp) / 1000);
+      haversineSpeedMs = deltaDistM / deltaTimeSec;
     }
 
-    // 1. SPEED CALCULATION (Native Doppler or Haversine Moving Average Fallback)
-    let rawSpeedMs = 0;
-    if (typeof coords.speed === 'number' && !Number.isNaN(coords.speed) && coords.speed >= 0) {
-      rawSpeedMs = coords.speed;
-      el.speedSourceBadge.textContent = state.isSimulating ? 'SIMULIACIJA' : 'GPS DOPPLER';
-    } else if (prevPoint && deltaTimeSec > 0) {
-      // Haversine fallback with noise gate
-      const instantMs = deltaDistM < Math.max(1.5, accuracy * 0.45) ? 0 : deltaDistM / deltaTimeSec;
-      state.speedWindowMs.push(instantMs);
-      if (state.speedWindowMs.length > 5) state.speedWindowMs.shift();
-      rawSpeedMs = state.speedWindowMs.reduce((a, b) => a + b, 0) / state.speedWindowMs.length;
-      el.speedSourceBadge.textContent = 'HAVERSINE Δd/Δt';
+    const haversineSpeedKmh = haversineSpeedMs * 3.6;
+    const nativeSpeedKmh = nativeSpeedMs !== null ? nativeSpeedMs * 3.6 : null;
+
+    state.rawHaversineKmh = haversineSpeedKmh;
+    state.rawSpeedKmh = nativeSpeedKmh !== null ? nativeSpeedKmh : haversineSpeedKmh;
+
+    // Update raw readout UI
+    if (el.rawSpeedKmh) {
+      el.rawSpeedKmh.textContent = `${state.rawSpeedKmh.toFixed(1)} km/h`;
+    }
+    if (el.rawGpsSpeedMs) {
+      el.rawGpsSpeedMs.textContent = nativeSpeedMs !== null
+        ? `coords.speed: ${nativeSpeedMs.toFixed(2)} m/s`
+        : 'coords.speed: null';
+    }
+    if (el.rawHaversineKmh) {
+      el.rawHaversineKmh.textContent = `${haversineSpeedKmh.toFixed(1)} km/h (Δd=${deltaDistM.toFixed(1)}m)`;
     }
 
-    const speedKmh = rawSpeedMs * 3.6;
-    state.currentSpeedMs = rawSpeedMs;
-    state.currentSpeedKmh = speedKmh;
+    const timeStr = new Date(gpsTimeMs).toLocaleTimeString('lt-LT');
 
-    // 2. HEADING / COMPASS
-    if (typeof coords.heading === 'number' && !Number.isNaN(coords.heading) && coords.heading >= 0) {
-      state.currentHeadingDeg = coords.heading;
-    } else if (prevPoint && deltaDistM >= 2.0) {
-      state.currentHeadingDeg = computeBearingDeg(prevPoint.lat, prevPoint.lon, lat, lon);
+    // 1. COARSE LOCATION CHECK (coords.accuracy > 1000)
+    if (accuracy > COARSE_LOCATION_THRESHOLD_M) {
+      showAlert(
+        `Gaunama tik apytikslė tinklo vieta (±${Math.round(accuracy)} m). Įjunkite „Tikslią vietovę“ (Precise Location) naršyklės leidimuose ir išeikite į atvirą vietą.`
+      );
+      addDiagLog(
+        `[${timeStr}] APYTIKSLĖ VIETA: ${lat.toFixed(5)}, ${lon.toFixed(5)} | ±${Math.round(accuracy)}m | Raw: ${state.rawSpeedKmh.toFixed(1)} km/h`,
+        'coarse'
+      );
+      updateUI();
+      updateMapWithPoint(lat, lon, accuracy);
+      el.mapLastUpdate.textContent = `Atnaujinta: ${timeStr} (±${Math.round(accuracy)}m)`;
+      return;
+    } else {
+      // Clear coarse warning if accuracy improved <= 1000m
+      if (el.alertBannerText.textContent.includes('apytikslė tinklo vieta')) {
+        hideAlert();
+      }
     }
 
-    // 3. ALTIMETER & ELEVATION GAIN/LOSS (Threshold Filtered)
-    if (alt !== null) {
-      state.currentAltitude = alt;
-      const elevThreshold = Math.max(2.5, altAcc ? Math.min(8, altAcc * 0.45) : 2.8);
-      el.altFilterBadge.textContent = `SLENKSTIS: ±${elevThreshold.toFixed(1)}m`;
+    // 2. SPEED & DISTANCE CALCULATION FOR USABLE FIXES (coords.accuracy <= 150m)
+    const isUsableAccuracy = accuracy <= MAX_USABLE_ACCURACY_M;
+    let effectiveSpeedMs = 0;
 
-      if (state.referenceAltitude === null) {
-        state.referenceAltitude = alt;
-      } else if (state.isRunning && !state.isPaused) {
-        const diffAlt = alt - state.referenceAltitude;
-        if (Math.abs(diffAlt) >= elevThreshold) {
-          if (diffAlt > 0) state.elevationGainM += diffAlt;
-          else state.elevationLossM += Math.abs(diffAlt);
+    if (isUsableAccuracy) {
+      // Use coords.speed if > 0; if null OR 0 while coordinates actually changed, use Haversine (deltaDistance / deltaTime)
+      if (nativeSpeedMs !== null && nativeSpeedMs > 0) {
+        effectiveSpeedMs = nativeSpeedMs;
+        el.speedSourceBadge.textContent = state.isSimulating ? 'SIMULIACIJA' : 'GPS DOPPLER';
+      } else if (state.lastFix && deltaDistM >= 0.5 && deltaTimeSec > 0) {
+        state.speedWindowMs.push(haversineSpeedMs);
+        if (state.speedWindowMs.length > 3) state.speedWindowMs.shift();
+        effectiveSpeedMs = state.speedWindowMs.reduce((a, b) => a + b, 0) / state.speedWindowMs.length;
+        el.speedSourceBadge.textContent = 'HAVERSINE Δd/Δt';
+      } else {
+        state.speedWindowMs = [];
+        effectiveSpeedMs = 0;
+        el.speedSourceBadge.textContent = nativeSpeedMs === 0 ? 'GPS (0.0)' : 'HAVERSINE Δd/Δt';
+      }
+
+      state.currentSpeedMs = effectiveSpeedMs;
+      state.currentSpeedKmh = effectiveSpeedMs * 3.6;
+
+      // Heading / Compass
+      if (typeof coords.heading === 'number' && !Number.isNaN(coords.heading) && coords.heading >= 0) {
+        state.currentHeadingDeg = coords.heading;
+      } else if (state.lastFix && deltaDistM >= 1.5) {
+        state.currentHeadingDeg = computeBearingDeg(state.lastFix.lat, state.lastFix.lon, lat, lon);
+      }
+
+      // Altimeter & Elevation Gain/Loss
+      if (alt !== null) {
+        state.currentAltitude = alt;
+        const elevThreshold = Math.max(2.5, altAcc ? Math.min(8, altAcc * 0.45) : 2.8);
+        el.altFilterBadge.textContent = `SLENKSTIS: ±${elevThreshold.toFixed(1)}m`;
+
+        if (state.referenceAltitude === null) {
           state.referenceAltitude = alt;
+        } else if (state.isRunning && !state.isPaused) {
+          const diffAlt = alt - state.referenceAltitude;
+          if (Math.abs(diffAlt) >= elevThreshold) {
+            if (diffAlt > 0) state.elevationGainM += diffAlt;
+            else state.elevationLossM += Math.abs(diffAlt);
+            state.referenceAltitude = alt;
+          }
+        }
+
+        if (state.lastAltSample) {
+          const dtMin = (nowMs - state.lastAltSample.timeMs) / 60000;
+          const dAlt = alt - state.lastAltSample.alt;
+          const dHoriz = haversineDistanceM(state.lastAltSample.lat, state.lastAltSample.lon, lat, lon);
+
+          if (dtMin > 0.01) {
+            state.verticalSpeedMmin = state.verticalSpeedMmin * 0.6 + (dAlt / dtMin) * 0.4;
+          }
+          if (dHoriz >= 3.0) {
+            const rawGrad = (dAlt / dHoriz) * 100;
+            const clampedGrad = Math.max(-45, Math.min(45, rawGrad));
+            state.gradientPct = state.gradientPct * 0.65 + clampedGrad * 0.35;
+          } else if (state.currentSpeedKmh < 1.0) {
+            state.gradientPct = 0;
+            state.verticalSpeedMmin = 0;
+          }
+        }
+
+        if (!state.lastAltSample || nowMs - state.lastAltSample.timeMs >= 2000) {
+          state.lastAltSample = { alt, lat, lon, timeMs: nowMs };
         }
       }
 
-      // Gradient (%) & Vertical speed (m/min)
-      if (state.lastAltSample) {
-        const dtMin = (nowMs - state.lastAltSample.timeMs) / 60000;
-        const dAlt = alt - state.lastAltSample.alt;
-        const dHoriz = haversineDistanceM(state.lastAltSample.lat, state.lastAltSample.lon, lat, lon);
-
-        if (dtMin > 0.01) {
-          state.verticalSpeedMmin = state.verticalSpeedMmin * 0.6 + (dAlt / dtMin) * 0.4;
+      // Active Trip Recording (Distance, Max Speed, Track Points)
+      if (state.isRunning && !state.isPaused) {
+        if (state.currentSpeedKmh > state.maxSpeedKmh) {
+          state.maxSpeedKmh = state.currentSpeedKmh;
         }
-        if (dHoriz >= 4.0) {
-          const rawGrad = (dAlt / dHoriz) * 100;
-          const clampedGrad = Math.max(-45, Math.min(45, rawGrad));
-          state.gradientPct = state.gradientPct * 0.65 + clampedGrad * 0.35;
-        } else if (speedKmh < 1.2) {
-          state.gradientPct = 0;
-          state.verticalSpeedMmin = 0;
+
+        // Accumulate distance for all fixes with accuracy <= 150m when moving
+        if (state.lastFix && deltaDistM >= 0.5 && (state.currentSpeedKmh >= 0.6 || deltaDistM >= 1.5)) {
+          state.totalDistanceM += deltaDistM;
         }
-      }
 
-      if (!state.lastAltSample || nowMs - state.lastAltSample.timeMs >= 2000) {
-        state.lastAltSample = { alt, lat, lon, timeMs: nowMs };
-      }
-    }
-
-    // 4. ACTIVE RECORDING METRICS (Distance, Max Speed, Track Points)
-    if (state.isRunning && !state.isPaused) {
-      if (speedKmh > state.maxSpeedKmh) {
-        state.maxSpeedKmh = speedKmh;
-      }
-
-      // Ignore micro-shifts when speed < 1.0 km/h or displacement < accuracy gate
-      const minDisplacementGate = Math.max(1.8, Math.min(accuracy * 0.6, 12));
-      const isValidMove = prevPoint && speedKmh >= MICRO_DRIFT_MIN_KMH && deltaDistM >= minDisplacementGate;
-
-      if (isValidMove) {
-        state.totalDistanceM += deltaDistM;
-      }
-
-      // Append point if first point or moved >= 2m or 3 seconds elapsed
-      const shouldStorePoint =
-        !prevPoint ||
-        isValidMove ||
-        (nowMs - prevPoint.timestamp >= 3500 && speedKmh >= 1.0);
-
-      if (shouldStorePoint) {
         state.points.push({
           lat: Number(lat.toFixed(6)),
           lon: Number(lon.toFixed(6)),
           alt: alt !== null ? Number(alt.toFixed(1)) : null,
-          speedKmh: Number(speedKmh.toFixed(2)),
-          speedMs: Number(rawSpeedMs.toFixed(2)),
+          speedKmh: Number(state.currentSpeedKmh.toFixed(2)),
+          speedMs: Number(state.currentSpeedMs.toFixed(2)),
+          rawSpeedKmh: Number(state.rawSpeedKmh.toFixed(2)),
           acc: Number(accuracy.toFixed(1)),
           altAcc: altAcc !== null ? Number(altAcc.toFixed(1)) : null,
           heading: state.currentHeadingDeg !== null ? Math.round(state.currentHeadingDeg) : null,
@@ -551,25 +646,50 @@
         });
         saveSessionToStorage();
       }
+
+      state.lastFix = { lat, lon, timestamp: nowMs, accuracy };
     }
+
+    // Always log incoming point to Diagnostic List
+    addDiagLog(
+      `[${timeStr}] ${lat.toFixed(6)}, ${lon.toFixed(6)} | ±${Math.round(accuracy)}m | Greitis: ${state.currentSpeedKmh.toFixed(1)} km/h (Raw: ${state.rawSpeedKmh.toFixed(1)} km/h, Δd: ${deltaDistM.toFixed(1)}m)`,
+      isUsableAccuracy ? 'normal' : 'coarse'
+    );
 
     updateUI();
     updateMapWithPoint(lat, lon, accuracy);
     renderChart();
 
-    const timeStr = new Date(nowMs).toLocaleTimeString('lt-LT');
     el.mapLastUpdate.textContent = `Atnaujinta: ${timeStr}`;
   }
 
+  /**
+   * Handle watchPosition errors WITHOUT restarting watchPosition on TIMEOUT
+   */
   function handlePositionError(err) {
-    let msg = 'GPS klaida: ';
-    if (err.code === 1) msg += 'Geolokacijos leidimas atmestas. Suteikite naršyklei vietos leidimą.';
-    else if (err.code === 2) msg += 'Nepavyko nustatyti GPS pozicijos (patikrinkite įrenginio GPS).';
-    else if (err.code === 3) msg += 'GPS signalo laukimo laikas baigėsi – bandoma dar kartą...';
-    else msg += err.message;
-    showAlert(msg);
-    el.gpsQualityLabel.textContent = 'GPS KLAIDA';
-    el.gpsSignalDot.className = 'signal-dot';
+    const timeStr = new Date().toLocaleTimeString('lt-LT');
+
+    if (err.code === 3) {
+      // TIMEOUT: DO NOT call clearWatch or restart watchPosition!
+      // Let the active watchPosition continue acquiring satellites uninterrupted.
+      el.gpsQualityLabel.textContent = 'Laukiama tikslaus GPS palydovų signalo...';
+      if (state.isRunning && !state.isPaused) {
+        el.sessionStatusText.textContent = 'Laukiama tikslaus GPS palydovų signalo...';
+      }
+      addDiagLog(`[${timeStr}] BŪSENA: Laukiama tikslaus GPS palydovų signalo... (watchPosition aktyvus)`, 'timeout');
+      return;
+    }
+
+    if (err.code === 1) {
+      showAlert('Geolokacijos leidimas atmestas. Suteikite naršyklei tikslios vietovės (Precise Location) leidimą.');
+      el.gpsQualityLabel.textContent = 'LEIDIMAS ATMESTAS';
+      addDiagLog(`[${timeStr}] KLAIDA: Geolokacijos leidimas atmestas (code 1)`, 'timeout');
+    } else if (err.code === 2) {
+      el.gpsQualityLabel.textContent = 'Laukiama tikslaus GPS palydovų signalo...';
+      addDiagLog(`[${timeStr}] BŪSENA: Pozicija dar nepasiekiama (code 2) – tęsiama paieška`, 'timeout');
+    } else {
+      addDiagLog(`[${timeStr}] GPS pranešimas: ${err.message}`, 'timeout');
+    }
   }
 
   // =========================================================================
@@ -642,16 +762,20 @@
       el.accHoriz.textContent = `H: ±${hAcc}m`;
       el.accVert.textContent = `V: ${vAcc}`;
 
-      if (hAcc <= 10) {
+      if (hAcc <= 15) {
         el.gpsQualityLabel.textContent = 'GPS: PUIKUS';
         el.gpsSignalDot.className = 'signal-dot good';
         el.gpsSignalBars.className = 'signal-bars bars-4';
-      } else if (hAcc <= 25) {
-        el.gpsQualityLabel.textContent = 'GPS: VIDUTINIS';
+      } else if (hAcc <= MAX_USABLE_ACCURACY_M) {
+        el.gpsQualityLabel.textContent = 'GPS: TINKAMAS (≤150m)';
         el.gpsSignalDot.className = 'signal-dot medium';
+        el.gpsSignalBars.className = 'signal-bars bars-3';
+      } else if (hAcc <= COARSE_LOCATION_THRESHOLD_M) {
+        el.gpsQualityLabel.textContent = 'GPS: SILPNAS';
+        el.gpsSignalDot.className = 'signal-dot';
         el.gpsSignalBars.className = 'signal-bars bars-2';
       } else {
-        el.gpsQualityLabel.textContent = 'GPS: SILPNAS';
+        el.gpsQualityLabel.textContent = 'TINKLO / IP VIETA';
         el.gpsSignalDot.className = 'signal-dot';
         el.gpsSignalBars.className = 'signal-bars bars-1';
       }
@@ -694,7 +818,6 @@
 
   function startTracking() {
     if (state.isRunning && state.isPaused) {
-      // Resume from pause
       state.isPaused = false;
       state.lastTickTimestamp = Date.now();
       el.sessionStatusText.textContent = state.isSimulating ? 'DEMO VYKDOMA' : 'FIKSUOJAMA (GPS)';
@@ -721,22 +844,26 @@
     startClockLoop();
 
     if (!state.isSimulating) {
-      startLiveGeolocation();
+      ensureLiveGeolocation();
     }
   }
 
-  function startLiveGeolocation() {
+  /**
+   * Ensure single continuous watchPosition with enableHighAccuracy: true, timeout: 30000, maximumAge: 0.
+   * Never recreates watchPosition if already active.
+   */
+  function ensureLiveGeolocation() {
     if (!('geolocation' in navigator)) {
       showAlert('Ši naršyklė nepalaiko Geolocation API.');
       return;
     }
     if (state.watchId !== null) {
-      navigator.geolocation.clearWatch(state.watchId);
+      return; // Keep active watchPosition running without interruption
     }
     state.watchId = navigator.geolocation.watchPosition(handlePosition, handlePositionError, {
       enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 15000
+      timeout: 30000,
+      maximumAge: 0
     });
   }
 
@@ -755,10 +882,6 @@
 
   function resetTracking() {
     stopSimulation();
-    if (state.watchId !== null) {
-      navigator.geolocation.clearWatch(state.watchId);
-      state.watchId = null;
-    }
 
     state.isRunning = false;
     state.isPaused = false;
@@ -766,9 +889,12 @@
     state.movingElapsedSec = 0;
     state.currentSpeedMs = 0;
     state.currentSpeedKmh = 0;
+    state.rawSpeedKmh = 0;
+    state.rawHaversineKmh = 0;
     state.maxSpeedKmh = 0;
     state.speedWindowMs = [];
     state.totalDistanceM = 0;
+    state.lastFix = null;
     state.referenceAltitude = state.currentAltitude;
     state.elevationGainM = 0;
     state.elevationLossM = 0;
@@ -789,13 +915,11 @@
 
     updateUI();
     renderChart();
-
-    // Restart passive GPS watch so user still sees live signal
-    startLiveGeolocation();
+    ensureLiveGeolocation();
   }
 
   // =========================================================================
-  // DEMO / SIMULATION MODE (FOR TESTING ALL GAUGES & GRAPHS ANYWHERE)
+  // DEMO / SIMULATION MODE
   // =========================================================================
 
   let simAngle = 0;
@@ -806,7 +930,7 @@
   function toggleSimulation() {
     if (state.isSimulating) {
       stopSimulation();
-      startLiveGeolocation();
+      ensureLiveGeolocation();
       return;
     }
 
@@ -835,12 +959,10 @@
       if (state.isPaused) return;
       simAngle += 0.08;
 
-      // Realistic speed profile between 18 km/h and 78 km/h
       const simSpeedMs = 11.5 + Math.sin(simAngle * 0.7) * 6.5 + Math.cos(simAngle * 1.9) * 2.5;
       const headingRad = simAngle * 0.35;
       const headingDeg = (toDeg(headingRad) + 360) % 360;
 
-      // Move coordinates according to speed and heading
       const distStepM = simSpeedMs * 1.0;
       const dLat = (distStepM * Math.cos(headingRad)) / EARTH_RADIUS_M;
       const dLon = (distStepM * Math.sin(headingRad)) / (EARTH_RADIUS_M * Math.cos(toRad(simLat)));
@@ -849,7 +971,6 @@
       simLon += toDeg(dLon);
       simAlt += Math.sin(simAngle * 0.5) * 1.4;
 
-      // Synthetic G-force oscillation
       const gx = Math.sin(simAngle * 1.3) * 1.8;
       const gy = Math.cos(simAngle * 0.9) * 1.4;
       updateGForceMetrics(gx, gy, 9.81 + Math.sin(simAngle) * 0.6);
@@ -905,7 +1026,6 @@
     el.accelY.textContent = y.toFixed(1);
     el.accelZ.textContent = z.toFixed(1);
 
-    // Move G-ball dot inside 88x88 radar
     const maxOffsetPx = 30;
     const dx = Math.max(-maxOffsetPx, Math.min(maxOffsetPx, (x / 9.81) * 22));
     const dy = Math.max(-maxOffsetPx, Math.min(maxOffsetPx, (y / 9.81) * 22));
@@ -921,7 +1041,7 @@
     };
 
     const handleOrientation = event => {
-      if (state.currentSpeedKmh >= 2.0) return; // Prefer GPS course when moving
+      if (state.currentSpeedKmh >= 2.0) return;
       let compassHeading = null;
       if (typeof event.webkitCompassHeading === 'number') {
         compassHeading = event.webkitCompassHeading;
@@ -1011,7 +1131,7 @@
         totalDistanceM: state.totalDistanceM,
         elevationGainM: state.elevationGainM,
         elevationLossM: state.elevationLossM,
-        points: state.points.slice(-3000) // Cap to keep storage fast
+        points: state.points.slice(-3000)
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
       el.storageStatusText.textContent = `Išsaugota: ${state.points.length} tšk. (${new Date().toLocaleTimeString('lt-LT')})`;
@@ -1132,9 +1252,7 @@ ${trkpts}
     el.btnReset.addEventListener('click', resetTracking);
     el.btnSim.addEventListener('click', toggleSimulation);
 
-    el.alertBannerClose.addEventListener('click', () => {
-      el.alertBanner.classList.add('hidden');
-    });
+    el.alertBannerClose.addEventListener('click', hideAlert);
 
     el.wakeLockBtn.addEventListener('click', () => {
       if (state.wakeLockEnabled) releaseWakeLock();
@@ -1177,10 +1295,12 @@ ${trkpts}
       if (state.darkMapLayer) {
         map.removeLayer(tileLayerLight);
         tileLayerDark.addTo(map);
+        if (el.mapContainerWrap) el.mapContainerWrap.classList.add('map-dark-active');
         el.btnToggleMapTheme.textContent = 'SLUOKSNIS: TAMSUS';
       } else {
         map.removeLayer(tileLayerDark);
         tileLayerLight.addTo(map);
+        if (el.mapContainerWrap) el.mapContainerWrap.classList.remove('map-dark-active');
         el.btnToggleMapTheme.textContent = 'SLUOKSNIS: OSM';
       }
     });
@@ -1196,7 +1316,9 @@ ${trkpts}
 
   function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').catch(() => {});
+      navigator.serviceWorker.register('sw.js?v=2').then(reg => {
+        reg.update();
+      }).catch(() => {});
     }
   }
 
@@ -1207,7 +1329,7 @@ ${trkpts}
     restoreSessionFromStorage();
     startClockLoop();
     requestWakeLock();
-    startLiveGeolocation();
+    ensureLiveGeolocation();
     renderChart();
     registerServiceWorker();
   }

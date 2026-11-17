@@ -10,7 +10,7 @@
   <meta name="description" content="Aukšto tikslumo GPS telemetrijos, greičio, aukščio, G-jėgos ir maršruto fiksavimo PWA aplikacija (gps.bubiai.eu)." />
   <title>BUBIAI GPS // Telemetrija ir Navigacija</title>
 
-  <link rel="manifest" href="manifest.json" />
+  <link rel="manifest" href="manifest.json?v=2" />
   <link rel="icon" type="image/svg+xml" href="icon.svg" />
   <link rel="apple-touch-icon" href="icon.svg" />
 
@@ -22,7 +22,7 @@
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=2" />
 </head>
 <body>
   <div class="app-shell">
@@ -53,7 +53,7 @@
             <span></span><span></span><span></span><span></span>
           </div>
           <div class="signal-metrics">
-            <span id="gpsQualityLabel">GPS LAUKIAMAS</span>
+            <span id="gpsQualityLabel">Laukiama tikslaus GPS palydovų signalo...</span>
             <span class="signal-acc"><span id="accHoriz">H: --m</span> · <span id="accVert">V: --m</span></span>
           </div>
         </div>
@@ -84,7 +84,7 @@
       </div>
     </header>
 
-    <!-- ALERT / RESTORE BANNER -->
+    <!-- ALERT / COARSE LOCATION / RESTORE BANNER -->
     <div id="alertBanner" class="alert-banner hidden" role="status">
       <span id="alertBannerText"></span>
       <button type="button" id="alertBannerClose" class="alert-close" aria-label="Uždaryti">✕</button>
@@ -139,6 +139,12 @@
             </div>
           </div>
 
+          <!-- Raw Speed Readout Row -->
+          <div class="raw-speed-row">
+            <span>RAW (neapdorotas): <strong id="rawSpeedKmh">0.0 km/h</strong> (<span id="rawGpsSpeedMs">coords.speed: null</span>)</span>
+            <span>Haversine Δd/Δt: <strong id="rawHaversineKmh">0.0 km/h</strong></span>
+          </div>
+
           <!-- Speed Progress Bar (0 - 160 km/h adaptive) -->
           <div class="speed-bar-track" aria-hidden="true">
             <div class="speed-bar-fill" id="speedBarFill"></div>
@@ -181,7 +187,7 @@
           <!-- Distance & Timers -->
           <div class="nav-stats-col">
             <div class="distance-hero">
-              <span class="metric-label">NUVAŽIUOTAS ATSTUMAS</span>
+              <span class="metric-label">NUVAŽIUOTAS ATSTUMAS (AKTYVUS KAI ≤150m PAKLAIDA)</span>
               <div class="distance-digits-row">
                 <span class="distance-digits" id="distancePrimary">0.00</span>
                 <span class="distance-unit" id="distanceUnit">km</span>
@@ -281,7 +287,7 @@
       <section class="card card-sensors" aria-label="Koordinatės ir jutikliai">
         <div class="card-header">
           <span class="card-tag">04 // KOORDINATĖS IR G-JĖGA</span>
-          <button type="button" id="btnEnableMotion" class="mini-action-btn">JUTIKLIAI: AKTYVūs</button>
+          <button type="button" id="btnEnableMotion" class="mini-action-btn">JUTIKLIAI: AKTYVŪS</button>
         </div>
 
         <!-- Coordinates Block -->
@@ -361,7 +367,7 @@
             </button>
           </div>
         </div>
-        <div class="map-container-wrap">
+        <div class="map-container-wrap map-dark-active" id="mapContainerWrap">
           <div id="map" class="leaflet-map"></div>
           <div class="map-overlay-stats">
             <span id="mapPointsBadge">0 taškų</span>
@@ -408,16 +414,27 @@
           </div>
         </div>
       </section>
+
+      <!-- 7. LIVE GPS DIAGNOSTIC LOG (VISI GAUNAMI TAŠKAI IR BŪSENOS) -->
+      <section class="card card-diag" aria-label="GPS diagnostikos sąrašas">
+        <div class="card-header">
+          <span class="card-tag">07 // GPS DIAGNOSTIKOS SĄRAŠAS (VISI GAUNAMI TAŠKAI)</span>
+          <span class="source-badge" id="diagCountBadge">Įrašai: 0</span>
+        </div>
+        <div class="diag-list" id="diagLogList">
+          <div class="diag-empty">Laukiama pirmųjų `watchPosition` duomenų (enableHighAccuracy: true, timeout: 30000ms)...</div>
+        </div>
+      </section>
     </main>
 
     <footer class="app-footer">
-      <span>BUBIAI TELEMETRY PWA v1.0 // HTTPS GEOLOCATION &amp; WAKE LOCK</span>
+      <span>BUBIAI TELEMETRY PWA v2.0 // HIGH-ACCURACY GPS &amp; WAKE LOCK</span>
       <span>gps.bubiai.eu</span>
     </footer>
   </div>
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="app.js"></script>
+  <script src="app.js?v=2"></script>
 </body>
 </html>
