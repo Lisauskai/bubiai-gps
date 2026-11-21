@@ -23,9 +23,10 @@
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 
-  <link rel="stylesheet" href="styles.css?v=4.0" />
+  <link rel="stylesheet" href="styles.css?v=4.1" />
 </head>
-<body data-mode="basic" data-tab="main">
+<body data-mode="basic" data-tab="main" data-theme="dark">
+  <div id="toastPopup" class="toast-popup hidden" role="status" aria-live="polite"></div>
   <div class="app-shell">
     <!-- TOP HEADER BAR -->
     <header class="top-bar">
@@ -58,27 +59,22 @@
         </div>
 
         <!-- Wake Lock Switch (starts OFF in PASIRUOŠĘS state, turns ON on START or manual click) -->
-        <button type="button" class="icon-toggle" id="wakeLockBtn" title="Screen Wake Lock – neleisti ekranui užgesti" aria-pressed="false">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="5" />
-            <line x1="12" y1="1" x2="12" y2="3" />
-            <line x1="12" y1="21" x2="12" y2="23" />
-            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-            <line x1="1" y1="12" x2="3" y2="12" />
-            <line x1="21" y1="12" x2="23" y2="12" />
-            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+        <button type="button" class="icon-toggle" id="wakeLockBtn" title="Ekranas neužges (Wake Lock)" aria-pressed="false">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="12" rx="2" />
+            <line x1="8" y1="20" x2="16" y2="20" />
+            <line x1="12" y1="16" x2="12" y2="20" />
           </svg>
-          <span class="toggle-text" id="wakeLockText">WAKE: IŠJ.</span>
+          <span class="icon-badge-text" id="wakeLockText">OFF</span>
         </button>
 
-        <!-- High-Contrast Sunlight Mode Toggle -->
-        <button type="button" class="icon-toggle" id="contrastBtn" title="Didelio kontrasto lauko režimas">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+        <!-- 3-State Theme Switcher: Tamsi -> OLED juoda -> Šviesi -->
+        <button type="button" class="icon-toggle" id="contrastBtn" title="Perjungti temą (Tamsi / OLED juoda / Šviesi)">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="12" cy="12" r="9" />
             <path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" />
           </svg>
+          <span class="icon-badge-text" id="themeBtnText">DARK</span>
         </button>
       </div>
     </header>
@@ -107,31 +103,14 @@
       <button type="button" id="alertBannerClose" class="alert-close" aria-label="Uždaryti">✕</button>
     </div>
 
-    <!-- PRIMARY CONTROLS BAR -->
+    <!-- PRIMARY CONTROLS BAR (SINGLE COMPACT ROW) -->
     <section class="control-bar" aria-label="Kelionės valdymas">
       <button type="button" id="btnStart" class="ctrl-btn ctrl-start">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><polygon points="6,4 20,12 6,20" /></svg>
-        <span id="btnStartText">START</span>
-      </button>
-
-      <button type="button" id="btnPause" class="ctrl-btn ctrl-pause" disabled>
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
-        <span>PAUZĖ</span>
+        <span id="btnStartText">▶ START</span>
       </button>
 
       <button type="button" id="btnReset" class="ctrl-btn ctrl-reset">
-        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2">
-          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-          <path d="M3 3v5h5" />
-        </svg>
-        <span>ATSTATYTI</span>
-      </button>
-
-      <button type="button" id="btnSim" class="ctrl-btn ctrl-sim" title="Paleisti arba sustabdyti demonstracinę telemetrijos simuliaciją">
-        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M2 12h4l3-9 4 18 3-9h6" />
-        </svg>
-        <span id="btnSimText">DEMO</span>
+        <span id="btnResetText">↺ ATSTATYTI</span>
       </button>
     </section>
 
@@ -162,8 +141,8 @@
             </div>
           </div>
 
-          <!-- Raw Speed & Unfiltered Haversine Δd/Δt Readout Row -->
-          <div class="raw-speed-row">
+          <!-- Raw Speed & Unfiltered Haversine Δd/Δt Readout Row (Expert Only) -->
+          <div class="raw-speed-row expert-only">
             <span>Doppler: <strong id="rawGpsSpeedMs">null</strong> (<strong id="rawSpeedKmh">0.0 km/h</strong>)</span>
             <span>Haversine Δd/Δt: <strong id="rawHaversineKmh">0.0 km/h (Δd=0.0m)</strong></span>
           </div>
@@ -554,7 +533,7 @@
     </main>
 
     <footer class="app-footer">
-      <span>BUBIAI.GPS Telemetrija PWA v4.0 // Hibridinis kompasas, Kalmano filtras ir IMU</span>
+      <span>BUBIAI.GPS Telemetrija PWA v4.1 // Hibridinis kompasas, Kalmano filtras ir IMU</span>
       <span>gps.bubiai.eu</span>
     </footer>
   </div>
@@ -577,6 +556,6 @@
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="app.js?v=4.0.1"></script>
+  <script src="app.js?v=4.1"></script>
 </body>
 </html>

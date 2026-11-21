@@ -1,4 +1,5 @@
-:root {
+:root,
+body[data-theme="dark"] {
   --bg-oled: #0b0f17;
   --bg-card: #131a26;
   --bg-card-elevated: #1a2333;
@@ -23,15 +24,93 @@
   --radius-sm: 10px;
 }
 
-body.high-contrast {
+body[data-theme="oled"] {
   --bg-oled: #000000;
-  --bg-card: #080b10;
-  --bg-card-elevated: #0e131b;
-  --border-subtle: rgba(255, 255, 255, 0.35);
-  --border-highlight: #38bdf8;
+  --bg-card: #06080c;
+  --bg-card-elevated: #0c1017;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-highlight: rgba(255, 255, 255, 0.15);
   --text-primary: #ffffff;
-  --text-secondary: #e2e8f0;
-  --text-muted: #cbd5e1;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+}
+
+body[data-theme="light"] {
+  --bg-oled: #f1f5f9;
+  --bg-card: #ffffff;
+  --bg-card-elevated: #f8fafc;
+  --border-subtle: rgba(15, 23, 42, 0.1);
+  --border-highlight: rgba(15, 23, 42, 0.2);
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+
+  --accent-emerald: #059669;
+  --accent-emerald-glow: rgba(5, 150, 105, 0.2);
+  --accent-sky: #0284c7;
+  --accent-sky-glow: rgba(2, 132, 199, 0.18);
+  --accent-amber: #d97706;
+  --accent-red: #dc2626;
+}
+
+body[data-theme="light"] .mini-compass-dial {
+  background: radial-gradient(circle, #ffffff 0%, #e2e8f0 100%);
+}
+
+body[data-theme="light"] .gforce-radar {
+  background: #f1f5f9;
+}
+
+body[data-theme="light"] .g-ring {
+  border-color: rgba(15, 23, 42, 0.18);
+}
+
+body[data-theme="light"] .g-cross-h,
+body[data-theme="light"] .g-cross-v {
+  background: rgba(15, 23, 42, 0.12);
+}
+
+body[data-theme="light"] .ctrl-start {
+  background: rgba(5, 150, 105, 0.12);
+  color: #047857;
+}
+
+body[data-theme="light"] .ctrl-start.recording {
+  background: rgba(5, 150, 105, 0.22);
+  color: #065f46;
+}
+
+body[data-theme="light"] .ctrl-start.paused {
+  background: rgba(217, 119, 6, 0.14);
+  border-color: rgba(217, 119, 6, 0.6);
+  color: #b45309;
+}
+
+body[data-theme="light"] .ctrl-reset {
+  background: rgba(220, 38, 38, 0.1);
+  color: #b91c1c;
+}
+
+body[data-theme="light"] .export-btn {
+  color: #047857;
+}
+
+body[data-theme="light"] .diag-item {
+  background: rgba(15, 23, 42, 0.03);
+}
+
+body[data-theme="light"] .diag-item.coarse {
+  color: #b45309;
+}
+
+body[data-theme="light"] .diag-item.timeout {
+  color: #b91c1c;
+}
+
+body[data-theme="light"] .map-overlay-stats span {
+  background: rgba(255, 255, 255, 0.92);
+  color: #0f172a;
 }
 
 /* Basic Mode hides all expert-only modules */
@@ -263,6 +342,36 @@ html, body {
   background: rgba(16, 185, 129, 0.12);
 }
 
+.icon-badge-text {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* TOAST POPUP */
+.toast-popup {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2500;
+  background: var(--bg-card-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-highlight);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 600;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+  pointer-events: none;
+  white-space: nowrap;
+  max-width: calc(100vw - 32px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* SEGMENTED MODE SWITCHER */
 .mode-switcher {
   display: grid;
@@ -352,10 +461,10 @@ html, body {
   padding: 2px 6px;
 }
 
-/* CONTROLS BAR */
+/* CONTROLS BAR (SINGLE COMPACT ROW) */
 .control-bar {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 1fr 0.9fr;
+  grid-template-columns: 2fr 1fr;
   gap: 8px;
 }
 
@@ -397,6 +506,12 @@ html, body {
   border-color: var(--accent-emerald);
   color: #6ee7b7;
   box-shadow: 0 0 16px var(--accent-emerald-glow);
+}
+
+.ctrl-start.paused {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.55);
+  color: #fbbf24;
 }
 
 .ctrl-pause {
@@ -1286,7 +1401,7 @@ body[data-mode="expert"] .sub-metrics-row.two-cols-basic {
     padding: 6px 8px 20px;
   }
   .control-bar {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1.75fr 1fr;
   }
   .expert-tabs-nav {
     grid-template-columns: repeat(2, 1fr);
@@ -1301,8 +1416,5 @@ body[data-mode="expert"] .sub-metrics-row.two-cols-basic {
   }
   .speed-digits {
     font-size: 3.9rem;
-  }
-  .toggle-text {
-    display: none;
   }
 }

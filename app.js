@@ -1,7 +1,6 @@
 /**
- * BUBIAI.GPS Telemetrija PWA v4.0
- * Audit fixes, Hybrid Compass (MAG/GPS), 60Hz IMU + rAF, EMA + 15s Alt Window,
- * 2D Kalman Filter, Adaptive Accuracy, Tabbed UI
+ * BUBIAI.GPS Telemetrija PWA v4.1
+ * Compact Single-Row Controls, 3-State Theme + Toast, Zero-Speed Deadband, Clean Basic Mode
  * https://gps.bubiai.eu
  */
 
@@ -11,6 +10,7 @@
   const STORAGE_KEY = 'bubiai_gps_session_v4';
   const MODE_STORAGE_KEY = 'bubiai_gps_ui_mode';
   const TAB_STORAGE_KEY = 'bubiai_gps_ui_tab';
+  const THEME_STORAGE_KEY = 'bubiai_gps_theme_v4';
   const CALIB_STORAGE_KEY = 'bubiai_gps_calib_v1';
 
   const EARTH_RADIUS_M = 6371000;
@@ -122,12 +122,13 @@
   const state = {
     uiMode: 'basic', // 'basic' | 'expert'
     activeTab: 'main', // 'main' | 'imu' | 'geo' | 'sys'
+    theme: 'dark', // 'dark' | 'oled' | 'light'
     isRunning: false,
     isPaused: false,
     isSimulating: false,
+    trackingStartTimeMs: 0,
     watchId: null,
     gnssPulseTimerId: null,
-    simTimerId: null,
     clockTimerId: null,
 
     // Timers (seconds)
@@ -271,6 +272,8 @@
     wakeLockBtn: document.getElementById('wakeLockBtn'),
     wakeLockText: document.getElementById('wakeLockText'),
     contrastBtn: document.getElementById('contrastBtn'),
+    themeBtnText: document.getElementById('themeBtnText'),
+    toastPopup: document.getElementById('toastPopup'),
 
     alertBanner: document.getElementById('alertBanner'),
     alertBannerText: document.getElementById('alertBannerText'),
@@ -278,10 +281,7 @@
 
     btnStart: document.getElementById('btnStart'),
     btnStartText: document.getElementById('btnStartText'),
-    btnPause: document.getElementById('btnPause'),
     btnReset: document.getElementById('btnReset'),
-    btnSim: document.getElementById('btnSim'),
-    btnSimText: document.getElementById('btnSimText'),
 
     // Speedometer
     speedSourceBadge: document.getElementById('speedSourceBadge'),
@@ -466,6 +466,18 @@
     return 0;
   }
 
+  let toastTimerId = null;
+
+  function showToast(msg, durationMs = 1500) {
+    if (!el.toastPopup) return;
+    el.toastPopup.textContent = msg;
+    el.toastPopup.classList.remove('hidden');
+    if (toastTimerId) clearTimeout(toastTimerId);
+    toastTimerId = setTimeout(() => {
+      el.toastPopup.classList.add('hidden');
+    }, durationMs);
+  }
+
   function showAlert(msg) {
     el.alertBannerText.textContent = msg;
     el.alertBanner.classList.remove('hidden');
@@ -596,6 +608,73 @@
       if (map) map.invalidateSize();
       renderChart();
     }, 60);
+  }
+
+  function setMapDarkTheme(isDark) {
+    state.darkMapLayer = Boolean(isDark);
+    if (!map) return;
+    if (state.darkMapLayer) {
+      if (map.hasLayer(tileLayerLight)) map.removeLayer(tileLayerLight);
+      if (!map.hasLayer(tileLayerDark)) tileLayerDark.addTo(map);
+      if (el.mapContainerWrap) el.mapContainerWrap.classList.add('map-dark-active');
+      if (el.btnToggleMapTheme) el.btnToggleMapTheme.textContent = 'Sluoksnis: Tamsus';
+    } else {
+      if (map.hasLayer(tileLayerDark)) map.removeLayer(tileLayerDark);
+      if (!map.hasLayer(tileLayerLight)) tileLayerLight.addTo(map);
+      if (el.mapContainerWrap) el.mapContainerWrap.classList.remove('map-dark-active');
+      if (el.btnToggleMapTheme) el.btnToggleMapTheme.textContent = 'Sluoksnis: OSM';
+    }
+  }
+
+  function applyTheme(themeName, showNotification = false) {
+    const allowed = ['dark', 'oled', 'light'];
+    const validTheme = allowed.includes(themeName) ? themeName : 'dark';
+    state.theme = validTheme;
+    document.body.setAttribute('data-theme', validTheme);
+
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) {
+      const colorMap = { dark: '#0b0f17', oled: '#000000', light: '#f1f5f9' };
+      metaTheme.setAttribute('content', colorMap[validTheme]);
+    }
+
+    if (el.themeBtnText) {
+      const labelMap = { dark: 'DARK', oled: 'OLED', light: 'LIGHT' };
+      el.themeBtnText.textContent = labelMap[validTheme];
+    }
+    if (el.contrastBtn) {
+      el.contrastBtn.classList.toggle('active', validTheme !== 'dark');
+    }
+
+    setMapDarkTheme(validTheme !== 'light');
+
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, validTheme);
+    } catch (_) {}
+
+    if (showNotification) {
+      const toastMap = {
+        dark: 'Tema: Tamsi',
+        oled: 'Tema: OLED juoda',
+        light: 'Tema: Šviesi'
+      };
+      showToast(toastMap[validTheme]);
+    }
+  }
+
+  function cycleTheme() {
+    const order = ['dark', 'oled', 'light'];
+    const idx = order.indexOf(state.theme);
+    const nextTheme = order[(idx + 1) % order.length];
+    applyTheme(nextTheme, true);
+  }
+
+  function initTheme() {
+    let savedTheme = 'dark';
+    try {
+      savedTheme = localStorage.getItem(THEME_STORAGE_KEY) || 'dark';
+    } catch (_) {}
+    applyTheme(savedTheme, false);
   }
 
   function initUiMode() {
@@ -1049,8 +1128,25 @@
     }
 
     if (shouldUpdateSpeedAndDist) {
-      if (state.isImuStationary && nativeSpeedMs === null && stepDistM < 5.0) {
+      // Zero-Speed Deadband: lock speed to 0.0 km/h when stationary/hand-held or during 3s START warmup
+      const dopplerKmh = nativeSpeedMs !== null ? nativeSpeedMs * 3.6 : 0;
+      const isWarmup =
+        state.isRunning &&
+        !state.isPaused &&
+        state.trackingStartTimeMs > 0 &&
+        nowMs - state.trackingStartTimeMs < 3000;
+      const displacementM = Math.max(acceptedDeltaM, rawAcceptedDeltaM);
+      const withinAccuracy = displacementM <= Math.max(accuracy, 3.0);
+
+      if (
+        (isWarmup && withinAccuracy) ||
+        ((nativeSpeedMs === null || dopplerKmh < 1.5) && withinAccuracy) ||
+        (effectiveSpeedMs * 3.6 < 1.5 && (nativeSpeedMs === null || dopplerKmh < 1.5)) ||
+        (state.isImuStationary && nativeSpeedMs === null && stepDistM < 5.0)
+      ) {
         effectiveSpeedMs = 0;
+        stepDistM = 0;
+        state.speedWindowMs = [];
       }
 
       state.currentSpeedMs = effectiveSpeedMs;
@@ -1511,12 +1607,13 @@
 
     if (state.isRunning && state.isPaused) {
       state.isPaused = false;
+      state.trackingStartTimeMs = Date.now();
       state.lastTickTimestamp = Date.now();
-      el.sessionStatusText.textContent = state.isSimulating ? 'DEMO VYKDOMA' : 'FIKSUOJAMA (GPS+IMU)';
-      el.btnStartText.textContent = 'FIKSUOJAMA';
+      el.sessionStatusText.textContent = 'FIKSUOJAMA (GPS+IMU)';
+      el.btnStartText.textContent = '⏸ PAUZĖ';
       el.btnStart.classList.add('recording');
-      el.btnPause.disabled = false;
-      requestWakeLock();
+      el.btnStart.classList.remove('paused');
+      requestWakeLock(false);
       return;
     }
 
@@ -1524,18 +1621,16 @@
 
     state.isRunning = true;
     state.isPaused = false;
-    el.btnStartText.textContent = 'FIKSUOJAMA';
+    state.trackingStartTimeMs = Date.now();
+    el.btnStartText.textContent = '⏸ PAUZĖ';
     el.btnStart.classList.add('recording');
-    el.btnPause.disabled = false;
-    el.sessionStatusText.textContent = state.isSimulating ? 'DEMO VYKDOMA' : 'FIKSUOJAMA (GPS+IMU)';
+    el.btnStart.classList.remove('paused');
+    el.sessionStatusText.textContent = 'FIKSUOJAMA (GPS+IMU)';
 
     // WakeLock activates ONLY on START (or manual toggle)
-    requestWakeLock();
+    requestWakeLock(false);
     startClockLoop();
-
-    if (!state.isSimulating) {
-      ensureLiveGeolocation();
-    }
+    ensureLiveGeolocation();
   }
 
   function ensureLiveGeolocation() {
@@ -1560,19 +1655,19 @@
     state.currentSpeedMs = 0;
     state.currentSpeedKnots = 0;
     el.sessionStatusText.textContent = 'PAUZĖ';
-    el.btnStartText.textContent = 'TĘSTI';
+    el.btnStartText.textContent = '▶ TĘSTI';
     el.btnStart.classList.remove('recording');
-    el.btnPause.disabled = true;
+    el.btnStart.classList.add('paused');
     saveSessionToStorage();
     updateUI();
   }
 
   function resetTracking() {
-    stopSimulation();
     kalman.reset();
 
     state.isRunning = false;
     state.isPaused = false;
+    state.trackingStartTimeMs = 0;
     state.totalElapsedSec = 0;
     state.movingElapsedSec = 0;
     state.currentSpeedMs = 0;
@@ -1601,105 +1696,16 @@
 
     localStorage.removeItem(STORAGE_KEY);
     if (routePolyline) routePolyline.setLatLngs([]);
-    releaseWakeLock();
+    releaseWakeLock(false);
 
     el.sessionStatusText.textContent = 'PASIRUOŠĘS';
-    el.btnStartText.textContent = 'START';
-    el.btnStart.classList.remove('recording');
-    el.btnPause.disabled = true;
+    el.btnStartText.textContent = '▶ START';
+    el.btnStart.classList.remove('recording', 'paused');
     if (el.storageStatusText) el.storageStatusText.textContent = 'Sesija išvalyta';
 
     updateUI();
     renderChart();
     ensureLiveGeolocation();
-  }
-
-  // =========================================================================
-  // DEMO / SIMULATION MODE
-  // =========================================================================
-
-  let simAngle = 0;
-  let simLat = DEFAULT_CENTER[0];
-  let simLon = DEFAULT_CENTER[1];
-  let simAlt = 118.0;
-
-  function toggleSimulation() {
-    if (state.isSimulating) {
-      stopSimulation();
-      ensureLiveGeolocation();
-      return;
-    }
-
-    if (state.watchId !== null) {
-      navigator.geolocation.clearWatch(state.watchId);
-      state.watchId = null;
-    }
-
-    state.isSimulating = true;
-    el.btnSim.classList.add('active');
-    el.btnSimText.textContent = 'STOP DEMO';
-
-    if (!state.isRunning || state.isPaused) {
-      startTracking();
-    }
-    el.sessionStatusText.textContent = 'DEMO TELEMETRIJA';
-
-    if (state.points.length > 0) {
-      const last = state.points[state.points.length - 1];
-      simLat = last.lat;
-      simLon = last.lon;
-      simAlt = last.alt || 118.0;
-    }
-
-    state.simTimerId = setInterval(() => {
-      if (state.isPaused) return;
-      simAngle += 0.08;
-
-      const simSpeedMs = 11.5 + Math.sin(simAngle * 0.7) * 6.5 + Math.cos(simAngle * 1.9) * 2.5;
-      const headingRad = simAngle * 0.35;
-      const headingDeg = (toDeg(headingRad) + 360) % 360;
-
-      const distStepM = simSpeedMs * 1.0;
-      const dLat = (distStepM * Math.cos(headingRad)) / EARTH_RADIUS_M;
-      const dLon = (distStepM * Math.sin(headingRad)) / (EARTH_RADIUS_M * Math.cos(toRad(simLat)));
-
-      simLat += toDeg(dLat);
-      simLon += toDeg(dLon);
-      simAlt += Math.sin(simAngle * 0.5) * 1.4;
-
-      const gx = Math.sin(simAngle * 1.3) * 1.8;
-      const gy = Math.cos(simAngle * 0.9) * 1.4;
-      updateImuMetrics(
-        { x: gx * 0.6, y: gy * 0.6, z: Math.sin(simAngle) * 0.4 },
-        { x: gx, y: gy, z: 9.81 + Math.sin(simAngle) * 0.6 },
-        { alpha: Math.sin(simAngle) * 12, beta: Math.cos(simAngle) * 5, gamma: Math.sin(simAngle * 0.5) * 8 },
-        16.7
-      );
-      updateOrientationMetrics(headingDeg, Math.sin(simAngle * 0.5) * 6.5, Math.cos(simAngle * 0.8) * 8.2, true);
-
-      handlePosition({
-        coords: {
-          latitude: simLat,
-          longitude: simLon,
-          accuracy: 4.2,
-          altitude: simAlt,
-          altitudeAccuracy: 3.0,
-          heading: headingDeg,
-          speed: simSpeedMs
-        },
-        timestamp: Date.now()
-      });
-    }, 1000);
-  }
-
-  function stopSimulation() {
-    if (state.simTimerId) {
-      clearInterval(state.simTimerId);
-      state.simTimerId = null;
-    }
-    state.isSimulating = false;
-    el.btnSim.classList.remove('active');
-    el.btnSimText.textContent = 'DEMO';
   }
 
   // =========================================================================
@@ -2136,9 +2142,10 @@
   // SCREEN WAKE LOCK API (ACTIVATES ON START OR MANUAL TOGGLE ONLY)
   // =========================================================================
 
-  async function requestWakeLock() {
+  async function requestWakeLock(showFeedback = false) {
     if (!('wakeLock' in navigator)) {
-      el.wakeLockText.textContent = 'WAKE: N/A';
+      el.wakeLockText.textContent = 'N/A';
+      if (showFeedback) showToast('Naršyklė nepalaiko ekrano blokavimo');
       return;
     }
     try {
@@ -2146,20 +2153,22 @@
       state.wakeLockEnabled = true;
       el.wakeLockBtn.classList.add('active');
       el.wakeLockBtn.setAttribute('aria-pressed', 'true');
-      el.wakeLockText.textContent = 'WAKE: ĮJ.';
+      el.wakeLockText.textContent = 'ON';
+      if (showFeedback) showToast('Ekranas neužges (ON)');
       state.wakeLockSentinel.addEventListener('release', () => {
         if (!state.wakeLockEnabled) {
           el.wakeLockBtn.classList.remove('active');
           el.wakeLockBtn.setAttribute('aria-pressed', 'false');
-          el.wakeLockText.textContent = 'WAKE: IŠJ.';
+          el.wakeLockText.textContent = 'OFF';
         }
       });
     } catch (_) {
-      el.wakeLockText.textContent = 'WAKE: AUTO';
+      el.wakeLockText.textContent = 'AUTO';
+      if (showFeedback) showToast('Ekrano blokavimas nepavyko');
     }
   }
 
-  async function releaseWakeLock() {
+  async function releaseWakeLock(showFeedback = false) {
     state.wakeLockEnabled = false;
     if (state.wakeLockSentinel) {
       try {
@@ -2169,12 +2178,13 @@
     }
     el.wakeLockBtn.classList.remove('active');
     el.wakeLockBtn.setAttribute('aria-pressed', 'false');
-    el.wakeLockText.textContent = 'WAKE: IŠJ.';
+    el.wakeLockText.textContent = 'OFF';
+    if (showFeedback) showToast('Ekrano blokavimas išjungtas (OFF)');
   }
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && state.wakeLockEnabled) {
-      requestWakeLock();
+      requestWakeLock(false);
     }
   });
 
@@ -2226,7 +2236,8 @@
       state.isRunning = true;
       state.isPaused = true;
 
-      el.btnStartText.textContent = 'TĘSTI';
+      el.btnStartText.textContent = '▶ TĘSTI';
+      el.btnStart.classList.add('paused');
       el.sessionStatusText.textContent = 'SESIJA ATKURTA (PAUZĖ)';
       updateUI();
       updateMapWithPoint(lastPt.lat, lastPt.lon, lastPt.acc || 10, lastPt.tier || 'high');
@@ -2249,7 +2260,7 @@
 
   function exportGPX() {
     if (state.points.length === 0) {
-      showAlert('Nėra užfiksuotų maršruto taškų eksportavimui. Pradėkite kelionę arba įjunkite DEMO.');
+      showAlert('Nėra užfiksuotų maršruto taškų eksportavimui. Paspauskite START ir pajudėkite.');
       return;
     }
     const isoNow = new Date().toISOString();
@@ -2281,7 +2292,7 @@ ${trkpts}
 
   function exportJSON() {
     if (state.points.length === 0) {
-      showAlert('Nėra užfiksuotų maršruto taškų eksportavimui. Pradėkite kelionę arba įjunkite DEMO.');
+      showAlert('Nėra užfiksuotų maršruto taškų eksportavimui. Paspauskite START ir pajudėkite.');
       return;
     }
     const payload = {
@@ -2306,7 +2317,7 @@ ${trkpts}
 
   function exportCSV() {
     if (state.points.length === 0) {
-      showAlert('Nėra užfiksuotų maršruto taškų eksportavimui. Pradėkite kelionę arba įjunkite DEMO.');
+      showAlert('Nėra užfiksuotų maršruto taškų eksportavimui. Paspauskite START ir pajudėkite.');
       return;
     }
     const headers = [
@@ -2370,22 +2381,20 @@ ${trkpts}
   // =========================================================================
 
   function bindEvents() {
-    el.btnStart.addEventListener('click', startTracking);
-    el.btnPause.addEventListener('click', pauseTracking);
+    el.btnStart.addEventListener('click', () => {
+      if (state.isRunning && !state.isPaused) pauseTracking();
+      else startTracking();
+    });
     el.btnReset.addEventListener('click', resetTracking);
-    el.btnSim.addEventListener('click', toggleSimulation);
 
     el.alertBannerClose.addEventListener('click', hideAlert);
 
     el.wakeLockBtn.addEventListener('click', () => {
-      if (state.wakeLockEnabled) releaseWakeLock();
-      else requestWakeLock();
+      if (state.wakeLockEnabled) releaseWakeLock(true);
+      else requestWakeLock(true);
     });
 
-    el.contrastBtn.addEventListener('click', () => {
-      document.body.classList.toggle('high-contrast');
-      el.contrastBtn.classList.toggle('active');
-    });
+    el.contrastBtn.addEventListener('click', cycleTheme);
 
     if (el.btnCopyCoords) {
       el.btnCopyCoords.addEventListener('click', async () => {
@@ -2415,19 +2424,7 @@ ${trkpts}
     });
 
     el.btnToggleMapTheme.addEventListener('click', () => {
-      if (!map) return;
-      state.darkMapLayer = !state.darkMapLayer;
-      if (state.darkMapLayer) {
-        map.removeLayer(tileLayerLight);
-        tileLayerDark.addTo(map);
-        if (el.mapContainerWrap) el.mapContainerWrap.classList.add('map-dark-active');
-        el.btnToggleMapTheme.textContent = 'Sluoksnis: Tamsus';
-      } else {
-        map.removeLayer(tileLayerDark);
-        tileLayerLight.addTo(map);
-        if (el.mapContainerWrap) el.mapContainerWrap.classList.remove('map-dark-active');
-        el.btnToggleMapTheme.textContent = 'Sluoksnis: OSM';
-      }
+      setMapDarkTheme(!state.darkMapLayer);
     });
 
     if (el.btnExportGpx) el.btnExportGpx.addEventListener('click', exportGPX);
@@ -2443,7 +2440,7 @@ ${trkpts}
 
   function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=4.0.1').then(reg => {
+      navigator.serviceWorker.register('/sw.js?v=4.1').then(reg => {
         reg.update();
       }).catch(() => {});
     }
@@ -2453,6 +2450,7 @@ ${trkpts}
     initPwaInstall();
     initUiMode();
     initMap();
+    initTheme();
     bindEvents();
     initDeviceSensors();
     initBatteryTelemetry();
