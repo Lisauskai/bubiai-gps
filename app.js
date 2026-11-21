@@ -1752,10 +1752,7 @@
       el.imuStatusBadge.textContent = `Jutikliai aktyvūs @ ${hz}Hz`;
       el.imuStatusBadge.className = 'source-badge imu-badge ok';
       if (el.btnEnableMotion) {
-        const needsIosPermission =
-          typeof DeviceMotionEvent !== 'undefined' &&
-          typeof DeviceMotionEvent.requestPermission === 'function';
-        if (!needsIosPermission) el.btnEnableMotion.classList.add('hidden');
+        el.btnEnableMotion.classList.add('hidden');
       }
     }
   }
@@ -1935,79 +1932,92 @@
   }
 
   function ensureImuListenersActive() {
-    const needsIosPermission =
-      typeof DeviceMotionEvent !== 'undefined' &&
-      typeof DeviceMotionEvent.requestPermission === 'function';
-    if (!needsIosPermission) {
-      attachImuListeners();
-    }
+    attachImuListeners();
   }
 
-  function initDeviceSensors() {
+  async function requestMotionAndOrientationPermissions() {
+    let granted = true;
+    try {
+      if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+        const r1 = await DeviceMotionEvent.requestPermission();
+        if (r1 !== 'granted') granted = false;
+      }
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const r2 = await DeviceOrientationEvent.requestPermission();
+        if (r2 !== 'granted') granted = false;
+      }
+    } catch (_) {
+      return 'needs_gesture';
+    }
+    return granted ? 'granted' : 'denied';
+  }
+
+  async function initDeviceSensors() {
     loadCalibration();
 
-    const needsIosMotionPerm =
-      typeof DeviceMotionEvent !== 'undefined' &&
-      typeof DeviceMotionEvent.requestPermission === 'function';
-    const needsIosOrientPerm =
-      typeof DeviceOrientationEvent !== 'undefined' &&
-      typeof DeviceOrientationEvent.requestPermission === 'function';
+    // Always attach listeners immediately on load (works out-of-the-box on Android Chrome)
+    attachImuListeners();
 
-    if (needsIosMotionPerm || needsIosOrientPerm) {
-      // iOS requires user gesture for motion/orientation permission
-      if (el.btnEnableMotion) {
-        el.btnEnableMotion.textContent = 'Įjungti jutiklius';
-        el.btnEnableMotion.classList.remove('hidden');
-        el.btnEnableMotion.addEventListener('click', async () => {
-          try {
-            let granted = true;
-            if (needsIosMotionPerm) {
-              const r1 = await DeviceMotionEvent.requestPermission();
-              if (r1 !== 'granted') granted = false;
-            }
-            if (needsIosOrientPerm) {
-              const r2 = await DeviceOrientationEvent.requestPermission();
-              if (r2 !== 'granted') granted = false;
-            }
-            if (granted) {
-              attachImuListeners();
-              el.btnEnableMotion.classList.add('hidden');
-            } else {
-              if (el.imuStatusBadge) {
-                el.imuStatusBadge.textContent = 'Naršyklė blokuoja judesio jutiklius';
-                el.imuStatusBadge.className = 'source-badge imu-badge warn';
-              }
-            }
-          } catch (_) {
-            showAlert('Nepavyko aktyvuoti judesio jutiklių.');
-          }
-        });
+    const hasRequestPermApi =
+      (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') ||
+      (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function');
+
+    let permStatus = 'granted';
+    if (hasRequestPermApi) {
+      // Chromium/Android Chrome resolves 'granted' automatically; iOS Safari rejects without user tap
+      permStatus = await requestMotionAndOrientationPermissions();
+      if (permStatus === 'granted') {
+        state.imuListenersActive = false;
+        attachImuListeners();
       }
-    } else {
-      // Android / Standard browsers: attach immediately on page load
-      attachImuListeners();
+    }
 
-      // 2-Second Sensor Watchdog
-      setTimeout(() => {
-        if (state.imuEventCount === 0 && state.imuOrientationCount === 0 && !state.isSimulating) {
+    if (permStatus !== 'granted' && el.btnEnableMotion) {
+      el.btnEnableMotion.textContent = 'Įjungti jutiklius';
+      el.btnEnableMotion.classList.remove('hidden');
+      if (permStatus === 'denied' && el.imuStatusBadge) {
+        el.imuStatusBadge.textContent = 'Naršyklė blokuoja judesio jutiklius';
+        el.imuStatusBadge.className = 'source-badge imu-badge warn';
+      }
+      el.btnEnableMotion.onclick = async () => {
+        const res = await requestMotionAndOrientationPermissions();
+        if (res === 'granted') {
+          state.imuListenersActive = false;
+          attachImuListeners();
+          el.btnEnableMotion.classList.add('hidden');
+        } else {
           if (el.imuStatusBadge) {
             el.imuStatusBadge.textContent = 'Naršyklė blokuoja judesio jutiklius';
             el.imuStatusBadge.className = 'source-badge imu-badge warn';
           }
-          if (el.btnEnableMotion) {
-            el.btnEnableMotion.textContent = 'Įjungti jutiklius';
-            el.btnEnableMotion.classList.remove('hidden');
-            el.btnEnableMotion.onclick = () => {
-              state.imuListenersActive = false;
-              attachImuListeners();
-              showAlert(
-                'Jei jutikliai nereaguoja, Android Chrome adreso juostoje spauskite spynelės/nustatymų ikoną -> Leidimai -> Judesio jutikliai (Motion sensors) -> Leisti.'
-              );
-            };
-          }
+          showAlert('Suteikite judesio ir orientacijos jutiklių leidimą naršyklės nustatymuose.');
         }
-      }, 2000);
+      };
     }
+
+    // 2-Second Sensor Watchdog: detect blocked sensors (e.g. desktop or Chrome site settings block)
+    setTimeout(() => {
+      if (state.imuEventCount === 0 && state.imuOrientationCount === 0 && !state.isSimulating) {
+        if (el.imuStatusBadge) {
+          el.imuStatusBadge.textContent = 'Naršyklė blokuoja judesio jutiklius';
+          el.imuStatusBadge.className = 'source-badge imu-badge warn';
+        }
+        if (el.btnEnableMotion) {
+          el.btnEnableMotion.textContent = 'Įjungti jutiklius';
+          el.btnEnableMotion.classList.remove('hidden');
+          el.btnEnableMotion.onclick = async () => {
+            const res = await requestMotionAndOrientationPermissions();
+            state.imuListenersActive = false;
+            attachImuListeners();
+            if (res === 'granted') {
+              showAlert(
+                'Jei jutikliai vis dar nereaguoja, Chrome adreso juostoje spauskite nustatymų ikoną -> Leidimai -> Judesio jutikliai (Motion sensors) -> Leisti.'
+              );
+            }
+          };
+        }
+      }
+    }, 2000);
 
     if (el.btnCalibratePitch) {
       el.btnCalibratePitch.addEventListener('click', calibratePitchZero);
@@ -2433,7 +2443,7 @@ ${trkpts}
 
   function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=4.0').then(reg => {
+      navigator.serviceWorker.register('/sw.js?v=4.0.1').then(reg => {
         reg.update();
       }).catch(() => {});
     }
