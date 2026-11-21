@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#00ffaa" />
+  <meta name="theme-color" content="#0b0f17" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="BUBIAI.GPS" />
-  <meta name="description" content="BUBIAI.GPS Telemetrija – aukšto tikslumo GPS spidometras, aukštimatis, IMU jutikliai ir maršruto fiksavimas." />
+  <meta name="description" content="BUBIAI.GPS Telemetrija – aukšto tikslumo GPS spidometras, aukštimatis, hibridinis kompasas, IMU jutikliai ir maršruto fiksavimas." />
   <title>BUBIAI.GPS Telemetrija</title>
 
   <link rel="manifest" href="/manifest.json" />
@@ -15,17 +15,17 @@
   <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
   <link rel="apple-touch-icon" href="/icon-192.png" />
 
-  <!-- Fonts -->
+  <!-- Fonts: Inter (UI) & JetBrains Mono (Tabular Telemetry Digits) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700;800&display=swap" rel="stylesheet" />
 
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 
-  <link rel="stylesheet" href="styles.css?v=3.1" />
+  <link rel="stylesheet" href="styles.css?v=4.0" />
 </head>
-<body data-mode="basic">
+<body data-mode="basic" data-tab="main">
   <div class="app-shell">
     <!-- TOP HEADER BAR -->
     <header class="top-bar">
@@ -39,7 +39,7 @@
         </div>
       </div>
 
-      <div class="status-Cluster">
+      <div class="status-cluster">
         <!-- Visible PWA Install Button -->
         <button type="button" class="install-app-btn" id="btnInstallApp" title="Įdiegti BUBIAI.GPS aplikaciją į telefoną">
           <span>📲 DIEGTI APP</span>
@@ -53,13 +53,13 @@
           </div>
           <div class="signal-metrics">
             <span id="gpsQualityLabel">Laukiama GPS...</span>
-            <span class="signal-acc"><span id="accHoriz">H: --m</span> · <span id="accVert">V: --m</span></span>
+            <span class="signal-acc"><span id="accHoriz">H: --m</span> · <span id="accVert">V: N/A</span></span>
           </div>
         </div>
 
-        <!-- Wake Lock Switch -->
-        <button type="button" class="icon-toggle active" id="wakeLockBtn" title="Screen Wake Lock – neleisti ekranui užgesti" aria-pressed="true">
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2">
+        <!-- Wake Lock Switch (starts OFF in PASIRUOŠĘS state, turns ON on START or manual click) -->
+        <button type="button" class="icon-toggle" id="wakeLockBtn" title="Screen Wake Lock – neleisti ekranui užgesti" aria-pressed="false">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="5" />
             <line x1="12" y1="1" x2="12" y2="3" />
             <line x1="12" y1="21" x2="12" y2="23" />
@@ -70,12 +70,12 @@
             <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
             <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
           </svg>
-          <span class="toggle-text" id="wakeLockText">WAKE: ĮJ.</span>
+          <span class="toggle-text" id="wakeLockText">WAKE: IŠJ.</span>
         </button>
 
         <!-- High-Contrast Sunlight Mode Toggle -->
         <button type="button" class="icon-toggle" id="contrastBtn" title="Didelio kontrasto lauko režimas">
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="9" />
             <path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" />
           </svg>
@@ -86,11 +86,19 @@
     <!-- SEGMENTED MODE SWITCHER: BAZINĖ vs EKSPERTO -->
     <nav class="mode-switcher" aria-label="Darbo režimo pasirinkimas">
       <button type="button" id="btnModeBasic" class="mode-btn active" data-target-mode="basic">
-        <span>⚡ BAZINĖ</span>
+        <span>⚡ Bazinė</span>
       </button>
       <button type="button" id="btnModeExpert" class="mode-btn" data-target-mode="expert">
-        <span>🔬 EKSPERTO</span>
+        <span>🔬 Eksperto</span>
       </button>
+    </nav>
+
+    <!-- EXPERT SUB-NAVIGATION TABS (4 TABS) -->
+    <nav class="expert-tabs-nav expert-only" id="expertTabsNav" aria-label="Eksperto skyriai">
+      <button type="button" class="tab-btn active" data-tab="main">Pagrindinis</button>
+      <button type="button" class="tab-btn" data-tab="imu">Jutikliai (IMU)</button>
+      <button type="button" class="tab-btn" data-tab="geo">Grafikai ir Geodezija</button>
+      <button type="button" class="tab-btn" data-tab="sys">Sistema ir Logas</button>
     </nav>
 
     <!-- ALERT / COARSE LOCATION / RESTORE BANNER -->
@@ -102,17 +110,17 @@
     <!-- PRIMARY CONTROLS BAR -->
     <section class="control-bar" aria-label="Kelionės valdymas">
       <button type="button" id="btnStart" class="ctrl-btn ctrl-start">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><polygon points="6,4 20,12 6,20" /></svg>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><polygon points="6,4 20,12 6,20" /></svg>
         <span id="btnStartText">START</span>
       </button>
 
       <button type="button" id="btnPause" class="ctrl-btn ctrl-pause" disabled>
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
         <span>PAUZĖ</span>
       </button>
 
       <button type="button" id="btnReset" class="ctrl-btn ctrl-reset">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2">
           <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
           <path d="M3 3v5h5" />
         </svg>
@@ -120,7 +128,7 @@
       </button>
 
       <button type="button" id="btnSim" class="ctrl-btn ctrl-sim" title="Paleisti arba sustabdyti demonstracinę telemetrijos simuliaciją">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M2 12h4l3-9 4 18 3-9h6" />
         </svg>
         <span id="btnSimText">DEMO</span>
@@ -128,13 +136,13 @@
     </section>
 
     <!-- =================================================================== -->
-    <!-- CORE TELEMETRY (VISIBLE IN BOTH BASIC & EXPERT MODES)               -->
+    <!-- MAIN TELEMETRY GRID                                                 -->
     <!-- =================================================================== -->
     <main class="telemetry-grid">
-      <!-- 1. PRIMARY SPEEDOMETER -->
-      <section class="card card-speed" aria-label="Pagrindinis spidometras">
+      <!-- TAB 1: MAIN (VISIBLE IN BASIC MODE & EXPERT "Pagrindinis" TAB) -->
+      <section class="card card-speed" data-tab-group="main" aria-label="Pagrindinis spidometras">
         <div class="card-header">
-          <span class="card-tag">SPIDOMETRAS</span>
+          <span class="card-tag">Spidometras</span>
           <span class="source-badge" id="speedSourceBadge">GPS DOPPLER / Δd</span>
         </div>
 
@@ -154,7 +162,7 @@
             </div>
           </div>
 
-          <!-- Raw Speed & Unfiltered Haversine Δd/Δt Readout Row (Always Visible) -->
+          <!-- Raw Speed & Unfiltered Haversine Δd/Δt Readout Row -->
           <div class="raw-speed-row">
             <span>Doppler: <strong id="rawGpsSpeedMs">null</strong> (<strong id="rawSpeedKmh">0.0 km/h</strong>)</span>
             <span>Haversine Δd/Δt: <strong id="rawHaversineKmh">0.0 km/h (Δd=0.0m)</strong></span>
@@ -168,21 +176,21 @@
 
         <div class="sub-metrics-row two-cols-basic">
           <div class="metric-box">
-            <span class="metric-label">MAKSIMALUS GREITIS</span>
+            <span class="metric-label">Maksimalus greitis</span>
             <div class="metric-val-wrap">
-              <span class="metric-val accent-cyan" id="maxSpeedKmh">0.0</span>
+              <span class="metric-val accent-sky" id="maxSpeedKmh">0.0</span>
               <span class="metric-unit">km/h</span>
             </div>
           </div>
           <div class="metric-box">
-            <span class="metric-label">VID. JUDĖJIMO GREITIS</span>
+            <span class="metric-label">Vid. judėjimo greitis</span>
             <div class="metric-val-wrap">
-              <span class="metric-val accent-green" id="avgMovingSpeedKmh">0.0</span>
+              <span class="metric-val accent-emerald" id="avgMovingSpeedKmh">0.0</span>
               <span class="metric-unit">km/h</span>
             </div>
           </div>
           <div class="metric-box expert-only">
-            <span class="metric-label">VID. BENDRAS</span>
+            <span class="metric-label">Vid. bendras greitis</span>
             <div class="metric-val-wrap">
               <span class="metric-val" id="avgTotalSpeedKmh">0.0</span>
               <span class="metric-unit">km/h</span>
@@ -191,19 +199,19 @@
         </div>
       </section>
 
-      <!-- 2. TRIP SUMMARY: 4 LARGE CARDS (DISTANCE, MOVING TIME, ALTITUDE+GAIN, COMPASS) -->
-      <section class="card card-summary-four" aria-label="Kelionės suvestinė">
+      <!-- TRIP SUMMARY: 4 LARGE CARDS -->
+      <section class="card card-summary-four" data-tab-group="main" aria-label="Kelionės suvestinė">
         <div class="card-header">
-          <span class="card-tag">KELIONĖS SUVESTINĖ</span>
+          <span class="card-tag">Kelionės suvestinė</span>
           <span class="moving-badge" id="movingStateBadge">STOVIMA</span>
         </div>
 
         <div class="summary-four-grid">
           <!-- Card 1: Distance -->
           <div class="summary-big-box">
-            <span class="metric-label">1. NUVAŽIUOTAS ATSTUMAS</span>
+            <span class="metric-label">1. Nuvažiuotas atstumas</span>
             <div class="summary-big-val-row">
-              <span class="summary-big-digits accent-cyan" id="distancePrimary">0.00</span>
+              <span class="summary-big-digits accent-sky" id="distancePrimary">0.00</span>
               <span class="summary-big-unit" id="distanceUnit">km</span>
             </div>
             <span class="summary-sub-note" id="distanceMetersSub">0 m</span>
@@ -211,38 +219,41 @@
 
           <!-- Card 2: Moving Time -->
           <div class="summary-big-box">
-            <span class="metric-label">2. JUDĖJIMO LAIKAS</span>
+            <span class="metric-label">2. Judėjimo laikas</span>
             <div class="summary-big-val-row">
-              <span class="summary-big-digits accent-green mono-timer" id="timerMoving">00:00:00</span>
+              <span class="summary-big-digits accent-emerald mono-digits" id="timerMoving">00:00:00</span>
             </div>
-            <span class="summary-sub-note">Bendras: <strong id="timerTotal">00:00:00</strong></span>
+            <span class="summary-sub-note">Bendras: <strong id="timerTotal" class="mono-digits">00:00:00</strong></span>
           </div>
 
           <!-- Card 3: Altitude & Elevation Gain -->
           <div class="summary-big-box">
-            <span class="metric-label">3. AUKŠTIS IR PAKILIMAS</span>
+            <span class="metric-label">3. Aukštis ir pakilimas</span>
             <div class="summary-big-val-row">
               <span class="summary-big-digits" id="altitudeCur">--</span>
               <span class="summary-big-unit">m</span>
               <span class="gain-pill" id="elevGain">+0 m</span>
             </div>
-            <span class="summary-sub-note">Nusileidimas: <strong id="elevLoss">-0 m</strong></span>
+            <span class="summary-sub-note">Nusileidimas: <strong id="elevLoss" class="mono-digits">-0 m</strong></span>
           </div>
 
-          <!-- Card 4: Compass Direction -->
+          <!-- Card 4: Hybrid Compass Direction -->
           <div class="summary-big-box summary-compass-box">
             <div class="summary-compass-text">
-              <span class="metric-label">4. KOMPASO KRYPTIS</span>
-              <div class="summary-big-val-row">
-                <span class="summary-big-digits accent-cyan" id="headingCardinal">--</span>
-                <span class="summary-big-deg" id="headingDeg">---°</span>
+              <div class="compass-title-row">
+                <span class="metric-label">4. Kompaso kryptis</span>
+                <span class="compass-src-badge" id="compassSourceBadge">MAG</span>
               </div>
-              <span class="summary-sub-note" id="headingSubNote">Azimutas (0–360°)</span>
+              <div class="summary-big-val-row">
+                <span class="summary-big-digits accent-sky" id="headingCardinal">--</span>
+                <span class="summary-big-deg mono-digits" id="headingDeg">---°</span>
+              </div>
+              <span class="summary-sub-note" id="headingSubNote">Magnetometras / GPS</span>
             </div>
             <div class="mini-compass-dial" aria-hidden="true">
               <div class="compass-arrow" id="compassArrow">
-                <svg viewBox="0 0 40 40" width="38" height="38">
-                  <polygon points="20,4 28,33 20,26 12,33" fill="#00ffaa" />
+                <svg viewBox="0 0 40 40" width="36" height="36">
+                  <polygon points="20,4 28,33 20,26 12,33" fill="#38bdf8" />
                 </svg>
               </div>
             </div>
@@ -250,103 +261,40 @@
         </div>
       </section>
 
-      <!-- 3. CLEAN ROUTE MAP (VISIBLE IN BOTH MODES) -->
-      <section class="card card-map" aria-label="Maršruto žemėlapis">
+      <!-- CLEAN ROUTE MAP -->
+      <section class="card card-map" data-tab-group="main" aria-label="Maršruto žemėlapis">
         <div class="card-header">
-          <span class="card-tag">MARŠRUTO ŽEMĖLAPIS</span>
+          <span class="card-tag">Maršruto žemėlapis</span>
           <div class="map-controls-inline">
             <button type="button" id="btnCenterMap" class="mini-action-btn active" title="Automatiškai centruoti esamą vietą">
-              CENTRUOTI
+              Centruoti
             </button>
             <button type="button" id="btnToggleMapTheme" class="mini-action-btn" title="Perjungti tamsų / standartinį OpenStreetMap sluoksnį">
-              SLUOKSNIS: TAMSUS
+              Sluoksnis: Tamsus
             </button>
           </div>
         </div>
         <div class="map-container-wrap map-dark-active" id="mapContainerWrap">
-          <div id="map" class="leaflet-map"></div>
           <div class="map-overlay-stats">
             <span id="mapPointsBadge">0 taškų</span>
             <span id="mapLastUpdate">Atnaujinta: --:--:--</span>
           </div>
+          <div id="map" class="leaflet-map"></div>
         </div>
       </section>
 
       <!-- ================================================================= -->
-      <!-- EXPERT ONLY TELEMETRY MODULES (1 TO 7)                            -->
+      <!-- TAB 2: JUTIKLIAI (IMU) — EXPERT ONLY                              -->
       <!-- ================================================================= -->
-
-      <!-- E1. EXTENDED GPS & GEODESY TELEMETRY -->
-      <section class="card card-expert expert-only" aria-label="Išplėstinė GPS ir Geodezijos telemetrija">
+      <section class="card card-expert expert-only" data-tab-group="imu" aria-label="3D Erdvinė orientacija ir Inklinometras">
         <div class="card-header">
-          <span class="card-tag">E1 // IŠPLĖSTINĖ GPS IR GEODEZIJOS TELEMETRIJA</span>
-          <span class="source-badge" id="gpsRateBadge">0.00 Hz · Δt: -- ms</span>
-        </div>
-
-        <div class="coords-panel">
-          <div class="coords-numbers">
-            <div class="coord-line">
-              <span class="coord-axis">DEŠIMTAINIS (DD)</span>
-              <span class="coord-val" id="coordLat">--.------°</span>
-              <span class="coord-val" id="coordLon">--.------°</span>
-            </div>
-            <div class="coord-line">
-              <span class="coord-axis">DMS FORMATAS</span>
-              <span class="coord-val accent-cyan" id="coordDms">--°--'--.-"N --°--'--.-"E</span>
-            </div>
+          <span class="card-tag">3D Orientacija ir Inklinometras</span>
+          <div class="header-inline-actions">
+            <span class="source-badge imu-badge" id="imuStatusBadge">Tikrinami jutikliai...</span>
+            <button type="button" id="btnCalibratePitch" class="mini-action-btn active" title="Nustatyti esamą telefono padėtį kaip 0° atskaitos tašką">
+              Kalibruoti 0°
+            </button>
           </div>
-          <button type="button" id="btnCopyCoords" class="copy-coords-btn" title="Kopijuoti tikslias koordinates">
-            <span id="copyCoordsText">KOPIJUOTI</span>
-          </button>
-        </div>
-
-        <div class="sub-metrics-row four-cols">
-          <div class="metric-box">
-            <span class="metric-label">HORIZ. PAKLAIDA</span>
-            <div class="metric-val-wrap">
-              <span class="metric-val accent-cyan" id="expHorizAcc">--</span>
-              <span class="metric-unit">±m</span>
-            </div>
-          </div>
-          <div class="metric-box">
-            <span class="metric-label">VERT. PAKLAIDA</span>
-            <div class="metric-val-wrap">
-              <span class="metric-val" id="expVertAcc">--</span>
-              <span class="metric-unit">±m</span>
-            </div>
-          </div>
-          <div class="metric-box">
-            <span class="metric-label">NUOLYDIS / KAMPAS</span>
-            <div class="metric-val-wrap">
-              <span class="metric-val accent-amber" id="gradientPct">0.0%</span>
-              <span class="metric-unit" id="gradientDeg">(0.0°)</span>
-            </div>
-          </div>
-          <div class="metric-box">
-            <span class="metric-label">VERT. GREITIS / VAM</span>
-            <div class="metric-val-wrap">
-              <span class="metric-val accent-green" id="vertSpeedMmin">0.0</span>
-              <span class="metric-unit" id="vamReadout">m/min (0 m/h)</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="xyz-bar">
-          <span>Vert. m/s: <strong id="vertSpeedMs">0.00 m/s</strong></span>
-          <span>Dažnis: <strong id="gpsHzVal">0.00 Hz</strong></span>
-          <span>Δt: <strong id="gpsDeltaMs">-- ms</strong></span>
-          <span>Paketai: <strong id="gpsPacketsCount">0</strong></span>
-          <span id="altFilterBadge">Slenkstis: ±2.5m</span>
-        </div>
-      </section>
-
-      <!-- E2. 3D SPATIAL ORIENTATION & INCLINOMETER -->
-      <section class="card card-expert expert-only" aria-label="3D Erdvinė orientacija ir Inklinometras">
-        <div class="card-header">
-          <span class="card-tag">E2 // 3D ORIENTACIJA IR INKLINOMETRAS</span>
-          <button type="button" id="btnCalibratePitch" class="mini-action-btn active" title="Nustatyti esamą telefono padėtį kaip 0° atskaitos tašką">
-            KALIBRUOTI 0°
-          </button>
         </div>
 
         <div class="inclinometer-grid">
@@ -369,21 +317,21 @@
           <div class="inclinometer-metrics">
             <div class="sub-metrics-row three-cols">
               <div class="metric-box">
-                <span class="metric-label">PITCH (IŠILGINIS β)</span>
+                <span class="metric-label">Pitch (β)</span>
                 <div class="metric-val-wrap">
-                  <span class="metric-val accent-cyan" id="orientPitch">0.0</span>
+                  <span class="metric-val accent-sky" id="orientPitch">0.0</span>
                   <span class="metric-unit">°</span>
                 </div>
               </div>
               <div class="metric-box">
-                <span class="metric-label">ROLL (ŠONINIS γ)</span>
+                <span class="metric-label">Roll (γ)</span>
                 <div class="metric-val-wrap">
-                  <span class="metric-val accent-green" id="orientRoll">0.0</span>
+                  <span class="metric-val accent-emerald" id="orientRoll">0.0</span>
                   <span class="metric-unit">°</span>
                 </div>
               </div>
               <div class="metric-box">
-                <span class="metric-label">YAW / AZIMUTAS (α)</span>
+                <span class="metric-label">Yaw / Azimutas</span>
                 <div class="metric-val-wrap">
                   <span class="metric-val accent-amber" id="orientYaw">0.0</span>
                   <span class="metric-unit">°</span>
@@ -391,18 +339,17 @@
               </div>
             </div>
             <div class="xyz-bar">
-              <span>Kalibracija: <strong id="calibOffsetText">β₀=0.0°, γ₀=0.0°</strong></span>
+              <span>Kalibracija: <strong id="calibOffsetText" class="mono-digits">β₀=0.0°, γ₀=0.0°</strong></span>
               <button type="button" id="btnResetCalib" class="inline-link-btn">Atstatyti 0°</button>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- E3. INERTIAL SENSORS (IMU) TELEMETRY -->
-      <section class="card card-expert expert-only" aria-label="Inercinių jutiklių IMU telemetrija">
+      <section class="card card-expert expert-only" data-tab-group="imu" aria-label="Inercinių jutiklių IMU telemetrija">
         <div class="card-header">
-          <span class="card-tag">E3 // IMU JUTIKLIAI (AKSELEROMETRAS, G-JĖGA, GIROSKOPAS)</span>
-          <button type="button" id="btnEnableMotion" class="mini-action-btn">JUTIKLIAI: AKTYVŪS</button>
+          <span class="card-tag">IMU Jutikliai (G-Jėga, Akselerometras, Giroskopas)</span>
+          <button type="button" id="btnEnableMotion" class="mini-action-btn hidden">Įjungti jutiklius</button>
         </div>
 
         <div class="gforce-panel">
@@ -417,94 +364,117 @@
           <div class="gforce-metrics">
             <div class="sub-metrics-row three-cols compact">
               <div class="metric-box">
-                <span class="metric-label">MOMENTINĖ G</span>
+                <span class="metric-label">Momentinė G</span>
                 <div class="metric-val-wrap">
-                  <span class="metric-val accent-cyan" id="gForceCur">1.00</span>
+                  <span class="metric-val accent-sky" id="gForceCur">1.00</span>
                   <span class="metric-unit">G</span>
                 </div>
               </div>
               <div class="metric-box">
-                <span class="metric-label">PEAK (MAKS.) G</span>
+                <span class="metric-label">Peak (Maks.) G</span>
                 <div class="metric-val-wrap">
                   <span class="metric-val accent-amber" id="gForceMax">1.00</span>
                   <span class="metric-unit">G</span>
                 </div>
               </div>
               <div class="metric-box">
-                <span class="metric-label">LINIJINIS PAGREITIS</span>
+                <span class="metric-label">Lin. pagreitis</span>
                 <div class="metric-val-wrap">
-                  <span class="metric-val accent-green" id="accelMs2">0.00</span>
+                  <span class="metric-val accent-emerald" id="accelMs2">0.00</span>
                   <span class="metric-unit">m/s²</span>
                 </div>
               </div>
             </div>
 
             <div class="xyz-bar">
-              <span>Be grav. (m/s²): X:<strong id="linAccX">0.0</strong> Y:<strong id="linAccY">0.0</strong> Z:<strong id="linAccZ">0.0</strong></span>
+              <span>Be grav. (m/s²): X:<strong id="linAccX" class="mono-digits">0.0</strong> Y:<strong id="linAccY" class="mono-digits">0.0</strong> Z:<strong id="linAccZ" class="mono-digits">0.0</strong></span>
             </div>
             <div class="xyz-bar">
-              <span>Su grav. (m/s²): X:<strong id="accelX">0.0</strong> Y:<strong id="accelY">0.0</strong> Z:<strong id="accelZ">0.0</strong></span>
+              <span>Su grav. (m/s²): X:<strong id="accelX" class="mono-digits">0.0</strong> Y:<strong id="accelY" class="mono-digits">0.0</strong> Z:<strong id="accelZ" class="mono-digits">0.0</strong></span>
             </div>
             <div class="xyz-bar">
-              <span>Giroskopas (°/s): α:<strong id="gyroAlpha">0.0</strong> β:<strong id="gyroBeta">0.0</strong> γ:<strong id="gyroGamma">0.0</strong> | <strong id="imuIntervalMs">-- ms</strong></span>
+              <span>Giroskopas (°/s): α:<strong id="gyroAlpha" class="mono-digits">0.0</strong> β:<strong id="gyroBeta" class="mono-digits">0.0</strong> γ:<strong id="gyroGamma" class="mono-digits">0.0</strong> | <strong id="imuIntervalMs" class="mono-digits">-- ms</strong></span>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- E4, E5, E6. BATTERY, NETWORK & SYSTEM HARDWARE DIAGNOSTICS -->
-      <section class="card card-expert expert-only" aria-label="Baterijos, tinklo ir aparatūros diagnostika">
+      <!-- ================================================================= -->
+      <!-- TAB 3: GRAFIKAI IR GEODEZIJA — EXPERT ONLY                        -->
+      <!-- ================================================================= -->
+      <section class="card card-expert expert-only" data-tab-group="geo" aria-label="Geodezija, koordinatės ir VAM">
         <div class="card-header">
-          <span class="card-tag">E4–E6 // BATERIJA, TINKLAS IR APARATŪROS DIAGNOSTIKA</span>
-          <span class="source-badge" id="fpsBadge">60 FPS</span>
+          <span class="card-tag">Geodezija ir Vertikali dinamika</span>
+          <span class="source-badge" id="gpsRateBadge">0.00 Hz · Δt: -- ms</span>
         </div>
 
-        <div class="sub-metrics-row three-cols">
-          <!-- Battery -->
-          <div class="metric-box">
-            <span class="metric-label">E4 // BATERIJA</span>
-            <div class="metric-val-wrap">
-              <span class="metric-val accent-green" id="batLevel">--%</span>
-              <span class="metric-unit" id="batState">Tikrinama</span>
+        <div class="coords-panel">
+          <div class="coords-numbers">
+            <div class="coord-line">
+              <span class="coord-axis-badge">LAT</span>
+              <span class="coord-val mono-digits" id="coordLat">--.------°</span>
             </div>
-            <span class="summary-sub-note" id="batDeltaNote">Δ kelionės: 0% · Likę: --</span>
+            <div class="coord-line">
+              <span class="coord-axis-badge">LON</span>
+              <span class="coord-val mono-digits" id="coordLon">--.------°</span>
+            </div>
+            <div class="coord-line">
+              <span class="coord-axis-badge dms-badge">DMS</span>
+              <span class="coord-val accent-sky mono-digits" id="coordDms">--°--'--.-"N --°--'--.-"E</span>
+            </div>
           </div>
+          <button type="button" id="btnCopyCoords" class="copy-coords-btn" title="Kopijuoti tikslias koordinates">
+            <span id="copyCoordsText">Kopijuoti</span>
+          </button>
+        </div>
 
-          <!-- Network -->
+        <div class="sub-metrics-row two-cols">
           <div class="metric-box">
-            <span class="metric-label">E5 // TINKLAS IR RYŠYS</span>
+            <span class="metric-label">Horiz. paklaida</span>
             <div class="metric-val-wrap">
-              <span class="metric-val accent-cyan" id="netType">ONLINE</span>
-              <span class="metric-unit" id="netDownlink">-- Mbps</span>
+              <span class="metric-val accent-sky" id="expHorizAcc">--</span>
+              <span class="metric-unit">±m</span>
             </div>
-            <span class="summary-sub-note" id="netRttNote">RTT vėlinimas: -- ms</span>
           </div>
-
-          <!-- Hardware & Screen -->
           <div class="metric-box">
-            <span class="metric-label">E6 // CPU / RAM / EKRANAS</span>
+            <span class="metric-label">Vert. paklaida</span>
             <div class="metric-val-wrap">
-              <span class="metric-val" id="hwCoresRam">-- CPU / -- GB</span>
+              <span class="metric-val" id="expVertAcc">N/A</span>
+              <span class="metric-unit" id="expVertAccUnit">neperduodama</span>
             </div>
-            <span class="summary-sub-note" id="hwScreenNote">Ekranas: -- × -- (@--x)</span>
+          </div>
+          <div class="metric-box">
+            <span class="metric-label">Nuolydis / Kampas</span>
+            <div class="metric-val-wrap">
+              <span class="metric-val accent-amber" id="gradientPct">0.0%</span>
+              <span class="metric-unit" id="gradientDeg">(0.0°)</span>
+            </div>
+          </div>
+          <div class="metric-box">
+            <span class="metric-label">Vert. greitis / VAM</span>
+            <div class="metric-val-wrap">
+              <span class="metric-val accent-emerald" id="vertSpeedMmin">0.0</span>
+              <span class="metric-unit" id="vamReadout">m/min · VAM: 0 m/val. (nekylama)</span>
+            </div>
           </div>
         </div>
 
         <div class="xyz-bar">
-          <span>WakeLock: <strong id="diagWakeLock">AKTYVUS</strong></span>
-          <span>Ekrano kampas: <strong id="diagScreenAngle">0°</strong></span>
-          <span>JS Heap: <strong id="diagJsHeap">N/A</strong></span>
-          <span>Taškai sesijoje: <strong id="pointCount">0</strong></span>
+          <span>Vert. m/s: <strong id="vertSpeedMs" class="mono-digits">0.00 m/s</strong></span>
+          <span>Dažnis: <strong id="gpsHzVal" class="mono-digits">0.00 Hz</strong></span>
+          <span>Δt: <strong id="gpsDeltaMs" class="mono-digits">-- ms</strong></span>
+          <span>Paketai: <strong id="gpsPacketsCount" class="mono-digits">0</strong></span>
+          <span id="altFilterBadge">Slenkstis: ±2.5m</span>
         </div>
       </section>
 
-      <!-- E7A. REAL-TIME SPEED & ELEVATION PROFILE CHART -->
-      <section class="card card-chart expert-only" aria-label="Greičio ir aukščio profilio grafikas">
+      <section class="card card-chart expert-only" data-tab-group="geo" aria-label="Greičio ir aukščio profilio grafikas">
         <div class="card-header">
-          <span class="card-tag">E7 // GREIČIO IR AUKŠČIO PROFILIO GRAFIKAS</span>
+          <span class="card-tag">Greičio ir aukščio profilio grafikas</span>
           <div class="chart-legend">
-            <span class="legend-item"><i class="dot-cyan"></i> Greitis (km/h)</span>
-            <span class="legend-item"><i class="dot-green"></i> Aukštis (m)</span>
+            <span class="source-badge" id="chartModeBadge">Gyvas stebėjimas</span>
+            <span class="legend-item"><i class="dot-sky"></i> km/h</span>
+            <span class="legend-item"><i class="dot-emerald"></i> m</span>
           </div>
         </div>
         <div class="chart-wrap">
@@ -513,37 +483,78 @@
         <!-- Export Bar (.GPX, .JSON, .CSV) -->
         <div class="export-bar">
           <div class="export-info">
-            <span class="export-label">TELEMETRIJOS IR MARŠRUTO EKSPORTAS</span>
+            <span class="export-label">Telemetrijos ir maršruto eksportas</span>
             <span class="export-sub" id="storageStatusText">Sesija saugoma automatiškai (localStorage)</span>
           </div>
           <div class="export-buttons">
-            <button type="button" id="btnExportGpx" class="export-btn">
-              <span>.GPX</span>
-            </button>
-            <button type="button" id="btnExportJson" class="export-btn">
-              <span>.JSON</span>
-            </button>
-            <button type="button" id="btnExportCsv" class="export-btn">
-              <span>.CSV</span>
-            </button>
+            <button type="button" id="btnExportGpx" class="export-btn"><span>.GPX</span></button>
+            <button type="button" id="btnExportJson" class="export-btn"><span>.JSON</span></button>
+            <button type="button" id="btnExportCsv" class="export-btn"><span>.CSV</span></button>
           </div>
         </div>
       </section>
 
-      <!-- E7B. LIVE RAW LOG (LAST 15 GPS FIXES) -->
-      <section class="card card-diag expert-only" aria-label="Gyvas telemetrijos žurnalas">
+      <!-- ================================================================= -->
+      <!-- TAB 4: SISTEMA IR LOGAS — EXPERT ONLY                             -->
+      <!-- ================================================================= -->
+      <section class="card card-diag expert-only" data-tab-group="sys" aria-label="Baterijos, tinklo ir aparatūros diagnostika">
         <div class="card-header">
-          <span class="card-tag">GYVAS TELEMETRIJOS ŽURNALAS (PASKUTINIAI 15 FIKSAVIMŲ)</span>
+          <span class="card-tag">Baterija, Tinklas ir Aparatūros diagnostika</span>
+          <span class="source-badge" id="fpsBadge">60 FPS</span>
+        </div>
+
+        <div class="sys-diag-grid">
+          <div class="metric-box">
+            <span class="metric-label">Baterija</span>
+            <div class="metric-val-wrap">
+              <span class="metric-val accent-emerald" id="batLevel">--%</span>
+              <span class="metric-unit" id="batState">Tikrinama</span>
+            </div>
+            <span class="summary-sub-note" id="batDeltaNote">Δ kelionės: 0% · Likę: --</span>
+          </div>
+
+          <div class="metric-box">
+            <span class="metric-label">Tinklas ir ryšys</span>
+            <div class="metric-val-wrap">
+              <span class="metric-val accent-sky" id="netType">ONLINE</span>
+              <span class="metric-unit" id="netDownlink">-- Mbps</span>
+            </div>
+            <span class="summary-sub-note" id="netRttNote">RTT vėlinimas: -- ms</span>
+          </div>
+
+          <div class="metric-box">
+            <span class="metric-label">CPU / RAM / Ekranas</span>
+            <div class="metric-val-wrap">
+              <span class="metric-val" id="hwCoresRam">-- brand. / -- GB</span>
+            </div>
+            <span class="summary-sub-note" id="hwScreenNote">Ekranas: -- × -- (@--x)</span>
+          </div>
+
+          <div class="metric-box">
+            <span class="metric-label">Sistema ir sesija</span>
+            <div class="sys-kv-list">
+              <span>WakeLock: <strong id="diagWakeLock">NEAKTYVUS</strong></span>
+              <span>Kampas: <strong id="diagScreenAngle" class="mono-digits">0°</strong></span>
+              <span>JS Heap: <strong id="diagJsHeap" class="mono-digits">N/A</strong></span>
+              <span>Taškai: <strong id="pointCount" class="mono-digits">0</strong></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card card-diag expert-only" data-tab-group="sys" aria-label="Gyvas telemetrijos žurnalas">
+        <div class="card-header">
+          <span class="card-tag">Gyvas telemetrijos žurnalas (paskutiniai 15 fiksavimų)</span>
           <span class="source-badge" id="diagCountBadge">Įrašai: 0</span>
         </div>
         <div class="diag-list" id="diagLogList">
-          <div class="diag-empty">Laukiama `watchPosition` duomenų (enableHighAccuracy: true, timeout: 30000ms)...</div>
+          <div class="diag-empty">Laukiama watchPosition duomenų (enableHighAccuracy: true, timeout: 30000ms)...</div>
         </div>
       </section>
     </main>
 
     <footer class="app-footer">
-      <span>BUBIAI.GPS TELEMETRIJA PWA v3.1 // KALMAN FILTER &amp; SENSOR FUSION</span>
+      <span>BUBIAI.GPS Telemetrija PWA v4.0 // Hibridinis kompasas, Kalmano filtras ir IMU</span>
       <span>gps.bubiai.eu</span>
     </footer>
   </div>
@@ -566,6 +577,6 @@
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="app.js?v=3.1"></script>
+  <script src="app.js?v=4.0"></script>
 </body>
 </html>
